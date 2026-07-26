@@ -76,3 +76,4 @@ def test_installable_payload_has_no_personal_machine_example(repo_root: Path):
             text = path.read_text(encoding="utf-8")
             assert "DANIIL-LAPTOP" not in text
             assert "C:\\Users\\Даниил" not in text
+            assert "C:/Users/Даниил" not in text
