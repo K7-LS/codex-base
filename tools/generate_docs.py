@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from codex_base.token_audit import audit_static_context  # noqa: E402
 
 
 def _read(name: str):
@@ -26,7 +30,14 @@ def main() -> int:
     agents = _read("catalog/agents.json")
     skills = _read("catalog/skills.json")
     cold = _read("catalog/cold.json")
-    token = _read("reports/static-token-audit.json")
+    token = audit_static_context(ROOT)
+    token_report = ROOT / "reports" / "static-token-audit.json"
+    token_report.parent.mkdir(exist_ok=True)
+    token_report.write_text(
+        json.dumps(token, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     docs = ROOT / "docs"
     docs.mkdir(exist_ok=True)
 

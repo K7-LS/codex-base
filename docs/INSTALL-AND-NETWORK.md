@@ -65,9 +65,9 @@ pwsh -NoProfile -File "$env:USERPROFILE\.codex\base\foundation\0.1.0\foundation.
 
 | Метрика | Legacy hub | Candidate |
 | --- | ---: | ---: |
-| Base-controlled bytes | 72,077 | 13,133 |
-| Оценка tokens `ceil(bytes/3)` | 24,026 | 4,378 |
-| Сокращение | — | 81.78% |
+| Base-controlled bytes | 72,077 | 13,122 |
+| Оценка tokens `ceil(bytes/3)` | 24,026 | 4,374 |
+| Сокращение | — | 81.79% |
 
 Это оценка статического startup/discovery-контекста, а не биллинг провайдера.
 Matched A/B пока не запускался, поэтому снижение total input по реальным

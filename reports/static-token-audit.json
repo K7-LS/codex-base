@@ -1,7 +1,7 @@
 {
   "candidate": {
     "cold_payload_in_startup": false,
-    "estimated_tokens": 4378,
+    "estimated_tokens": 4374,
     "surfaces": {
       "agents_discovery": {
         "bytes": 3174,
@@ -15,15 +15,15 @@
         "sha256": "a2da33e63a247bcc36dbec7ebcc99a7bc481255b5ba05d19d2edf2b5fa043428"
       },
       "skills_discovery": {
-        "bytes": 5741,
+        "bytes": 5730,
         "capability_skills": 37,
         "control_skills": 1,
         "count": 38,
         "logical_root": "~/.agents/skills",
-        "sha256": "fede8acbfe2f8908502ec37704023bd217a16b3ccf322a6156bc0646d3d9ac83"
+        "sha256": "272a9b0dc2fbf2d8e28b61aa834cbf7433f323e0569517e9a82c151f7610633d"
       }
     },
-    "total_bytes": 13133
+    "total_bytes": 13122
   },
   "legacy": {
     "captured_at": "2026-07-26",
@@ -60,7 +60,7 @@
   "results": {
     "MATCHED_AB": "NOT_RUN",
     "STATIC_TOKEN_ACCEPTANCE": "PASS",
-    "base_controlled_startup_reduction": 0.817792083466293
+    "base_controlled_startup_reduction": 0.8179446980312721
   },
   "schema_version": 1,
   "thresholds": {
