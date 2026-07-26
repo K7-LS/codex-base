@@ -670,7 +670,7 @@ Returns entry entities + 1-hop connections + source_file. Run:
 Defaults to `skeleton.json`, falls back to `graph.json`.
 
 `tools/graph_update_win.py` — deterministic backbone for `graphify --update` (layer 2, semantic
-enrichment) on a Windows hub with a Cyrillic install path (Codex-base / DANIIL-LAPTOP). The LLM extraction (Step 3B
+enrichment) on a Windows hub with a Cyrillic install path (Codex-base / CYRILLIC-HOST). The LLM extraction (Step 3B
 subagents) still runs between its subcommands; the script only does the deterministic glue
 that the generic flow gets wrong on Windows. Run from the dir holding `graphify-out/`, always
 with `PYTHONIOENCODING=utf-8 PYTHONUTF8=1`.

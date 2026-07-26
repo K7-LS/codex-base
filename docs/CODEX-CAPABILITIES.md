@@ -53,7 +53,7 @@ token-дисциплина, lazy dependency policy и one-way sync. WARM discove
 | `$image-text-replace` | Use when в скане или изображении нужно заменить текст. | `image.read`, `image.write` |
 | `$karpathy-guidelines` | Use when существенная реализация рискует стать избыточной. | `core.files.read` |
 | `$llm-interop` | Use when задача передаётся между Codex, Claude и OpenCode. | `core.files.read`, `core.shell.execute` |
-| `$local-osint-recon` | Use when разрешён локальный OSINT через имеющийся Kali WSL. | `core.shell.execute` |
+| `$local-osint-recon` | Use when authorized local OSINT or recon must run through an existing Kali WSL. | `core.shell.execute` |
 | `$local-video-digest` | Use when локальному видео нужен контактный лист и конспект. | `video.read` |
 | `$pd-tep-extractor` | Use when из ПД нужно извлечь ТЭП со ссылками на источник. | `pdf.read` |
 | `$pdf-edit` | Use when нужно изменить страницы, формы или аннотации PDF. | `pdf.read`, `pdf.write` |

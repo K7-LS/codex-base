@@ -3,21 +3,21 @@
 """
 local-osint-recon — диспетчер вызовов OSINT/pentest-арсенала в Kali WSL.
 
-Зовётся с Windows-хоста, оборачивает `wsl.exe -d kali [-u root] -- <tool>`.
+Зовётся с Windows-хоста, оборачивает
+`wsl.exe -d <дистрибутив> [-u root] -- <tool>`.
 - пассив запускается свободно;
-- active/offensive требует флаг --authorized (гейт про ст. 272-274 УК РФ);
+- active/offensive требует явный флаг --authorized;
 - go-инструменты вызываются от root по полному пути /root/go/bin/<t>;
 - Windows-пути файлов конвертируются в /mnt/c/...;
-- инструменты needs_key (shodan/censys/...) пропускаются с сообщением.
-
-Инвентарь-источник: Desktop/osint-arsenal-revizia_2026-07-01.md
+- неизвестные инструменты fail closed;
+- отсутствующие зависимости дают BLOCKED и не устанавливаются автоматически.
 """
 import argparse
 import os
 import subprocess
 import sys
 
-DISTRO = "kali"
+DISTRO = os.environ.get("LOCAL_OSINT_WSL_DISTRO", "kali").strip() or "kali"
 
 # category: passive | active | offensive   (гейт на active/offensive)
 # runner:   user | root                     (go-инструменты — root)
@@ -103,24 +103,45 @@ def win_to_wsl(p):
 def run_tool(name, args, authorized=False, capture=False):
     meta = TOOLS.get(name)
     if meta is None:
-        # неизвестный инструмент — пробуем от root по имени (root PATH + login shell)
-        meta = dict(cat="offensive", runner="root", path=None, name=name)
-        print(f"[i] '{name}' нет в реестре — пробую от root по имени, категория по умолчанию offensive (гейт).")
+        print(
+            f"[BLOCKED] {name}: инструмента нет в публичном allowlist; "
+            "автоматический запуск запрещён."
+        )
+        return 3
     if meta.get("needs_key"):
-        print(f"[skip] {name}: требует API-ключ, ключей нет (см. ревизию). Пропуск.")
-        return 0
+        print(
+            f"[i] {name}: нужны заранее настроенные пользователем credentials; "
+            "база ключи не предоставляет."
+        )
     if meta["cat"] in GATED and not authorized:
         warn = "OFFENSIVE" if meta["cat"] == "offensive" else "ACTIVE RECON"
         print("=" * 68)
         print(f"  WARNING — {name}: {warn}")
-        print("  Запуск против ЧУЖОЙ цели без письменного разрешения —")
-        print("  ст. 272-274 УК РФ (неправомерный доступ / вредоносные программы).")
-        print("  Подтверди, что цель СВОЯ или авторизована, и повтори с флагом --authorized.")
+        print("  Запуск разрешён только для собственной или явно авторизованной цели.")
+        print("  Получи текущее подтверждение и повтори с флагом --authorized.")
         print("=" * 68)
         return 2
+    probe = ["wsl.exe", "-d", DISTRO]
+    if meta["runner"] == "root":
+        probe += ["-u", "root"]
+    probe += ["--", "test", "-x", meta["path"]]
     cmd = wsl_cmd(meta, args)
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
     try:
+        available = subprocess.run(
+            probe,
+            env=env,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+        )
+        if available.returncode != 0:
+            print(
+                f"[BLOCKED] {name}: {meta['path']} недоступен в WSL "
+                f"дистрибутиве {DISTRO}; установи/настрой зависимость отдельно."
+            )
+            return 3
         r = subprocess.run(cmd, env=env, text=True, encoding="utf-8", errors="replace",
                            capture_output=capture)
     except FileNotFoundError:
@@ -191,7 +212,10 @@ def main():
             _s.reconfigure(encoding="utf-8", errors="replace")
         except Exception:
             pass
-    p = argparse.ArgumentParser(prog="recon.py", description="local-osint-recon dispatcher (Kali WSL)")
+    p = argparse.ArgumentParser(
+        prog="recon.py",
+        description=f"local-osint-recon dispatcher (WSL distro: {DISTRO})",
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("list").set_defaults(func=cmd_list)

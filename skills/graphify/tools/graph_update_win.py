@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Deterministic backbone for `graphify --update` on a Windows hub with a
-Cyrillic install path (Codex-base / DANIIL-LAPTOP).
+Cyrillic install path (for example, Codex-base / CYRILLIC-HOST).
 
 Encodes the traps from memory `graphify_update_windows_traps.md` so the rebuild
 follows instructions instead of hand-run python. The LLM extraction (SKILL.md

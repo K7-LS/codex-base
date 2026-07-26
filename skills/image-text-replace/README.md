@@ -31,12 +31,12 @@ curl -L --retry 10 --retry-delay 5 --retry-all-errors `
 
 ### Почему ASCII-safe путь
 
-Windows + Python + кириллица в имени пользователя (`C:\Users\Даниил\...`)
+Windows + Python + кириллица в имени пользователя (`C:\Users\Пользователь\...`)
 ломает несколько вещей:
 - `cv2.imread()` не открывает Unicode-пути → читаем через Pillow
   (`np.array(Image.open(path).convert("RGB"))`)
 - iopaint грузит модель из `~/.cache/torch/...` и Python мангнул байты
-  для имени `Даниил` → форсируем `TORCH_HOME=C:\iopaint-cache\torch`
+  для кириллического имени → форсируем `TORCH_HOME=C:\iopaint-cache\torch`
 
 ## Quick smoke test
 

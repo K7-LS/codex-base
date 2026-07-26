@@ -226,8 +226,8 @@ def _ascii_safe_cache_dir() -> Path:
     """Return an ASCII-only cache directory for torch/iopaint models.
 
     Windows + Python + Cyrillic username breaks model loading
-    (`~/.cache/torch/...` resolves to garbled bytes for usernames like
-    'Даниил'). Use C:\\iopaint-cache as a stable fallback.
+    (`~/.cache/torch/...` can resolve to garbled bytes for a Cyrillic
+    username). Use C:\\iopaint-cache as a stable fallback.
     """
     if os.name == "nt":
         candidate = Path(r"C:\iopaint-cache")

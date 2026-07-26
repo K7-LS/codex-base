@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,19 @@ from codex_base.release import (
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _candidate_dist_path(root: Path, version: str) -> Path:
+    if re.fullmatch(
+        r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)",
+        version,
+    ) is None:
+        raise ValueError("Version must use canonical X.Y.Z format")
+    dist_root = (root / "dist").resolve()
+    candidate = (dist_root / f"candidate-{version}").resolve()
+    if candidate.parent != dist_root:
+        raise ValueError("Candidate path must be a direct child of dist")
+    return candidate
 
 
 def _run(command: list[str], cwd: Path, env: dict[str, str] | None = None):
@@ -196,6 +210,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = ROOT
+    dist = _candidate_dist_path(root, args.version)
     source = assert_clean_git_source(root)
     work = root / ".work" / "acceptance"
     if work.exists():
@@ -279,7 +294,6 @@ def main(argv: list[str] | None = None) -> int:
         "scope": "real 16-agent/37-capability-skill candidate in isolated fake homes",
     }
 
-    dist = root / "dist" / f"candidate-{args.version}"
     if dist.exists():
         shutil.rmtree(dist)
     dist.mkdir(parents=True)

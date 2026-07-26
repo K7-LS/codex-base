@@ -6,9 +6,9 @@ Load this only when the user passed `--update` or `--cluster-only`. A first-time
 
 Use when you've added or modified files since the last run. Only re-extracts changed files - saves tokens and time.
 
-> ### ⚠ Windows hub / Codex-base (DANIIL-LAPTOP) — use the deterministic helper
+> ### ⚠ Windows hub / Codex-base (CYRILLIC-HOST) — use the deterministic helper
 >
-> On a Windows hub with a Cyrillic install path (`C:\Users\Даниил\.codex`), the
+> On a Windows hub with a Cyrillic install path (`C:\Users\Имя Пользователя\.codex`), the
 > generic flow below silently corrupts the graph. Five traps (source:
 > `memory/graphify_update_windows_traps.md` + the build_merge analysis in
 > `session-reports/2026-06-23_graf-dovodka-bazy`):
@@ -16,7 +16,7 @@ Use when you've added or modified files since the last run. Only re-extracts cha
 > 1. **scan path** — `.graphify_root` stores a POSIX `/c/Users/...` path; Windows-Python
 >    can't resolve it → `detect_incremental` finds **0 files** → everything is flagged
 >    *deleted*. Needs a native `C:/Users/...` path.
-> 2. **encoding** — cp1251 console mangles Cyrillic in `print()` (`Даниил`→`������`).
+> 2. **encoding** — cp1251 console mangles Cyrillic in `print()` (`Имя`→`���`).
 >    Always `PYTHONIOENCODING=utf-8 PYTHONUTF8=1`.
 > 3. **source_file** — extraction subagents sometimes park the path in `source_location`
 >    and leave `source_file:null` → orphan nodes, 300+ "missing source_file" warnings.
