@@ -27,7 +27,6 @@ def main() -> int:
     skills = _read("catalog/skills.json")
     cold = _read("catalog/cold.json")
     token = _read("reports/static-token-audit.json")
-    summary = _read("reports/offline-acceptance-summary.json")
     docs = ROOT / "docs"
     docs.mkdir(exist_ok=True)
 
@@ -86,7 +85,7 @@ token-дисциплина, lazy dependency policy и one-way sync. WARM discove
 {chr(10).join(cold_rows)}
 """
     (docs / "CODEX-CAPABILITIES.md").write_text(
-        capabilities, encoding="utf-8"
+        capabilities, encoding="utf-8", newline="\n"
     )
 
     legacy = token["legacy"]
@@ -115,7 +114,10 @@ rollback'ом.
 `auth.json`, sessions, archived sessions, memories, state/SQLite,
 browser/computer-use state, external imports, проекты и рабочие папки.
 Foundation хранит собственные transaction state и backups отдельно в
-`~/.llm-foundation/`.
+`~/.llm-foundation/`. Install/rollback используют exclusive lock; rollback
+перед первой мутацией проверяет hash-bound snapshot и каждый backup-объект,
+восстанавливает из staging и завершает recovery-journal только последним
+шагом.
 
 ## Сеть
 
@@ -125,6 +127,11 @@ Foundation хранит собственные transaction state и backups от
   `verify-asset`.
 - Foundation engine: полностью offline, сетевого кода нет.
 - Consumer upload, push, feedback, telemetry и session-report отсутствуют.
+
+Перед install updater проверяет immutable release и attestation каждого asset,
+затем SHA ZIP/manifest/lock/evidence, все release-gates и совпадение внешнего
+component lock с embedded-копией. Запускается только Foundation engine,
+извлечённый из уже проверенного ZIP и совпавший с его pinned version/hash.
 
 ## Команды
 
@@ -159,25 +166,24 @@ Matched A/B пока не запускался, поэтому снижение 
 запросам ещё не доказано.
 """
     (docs / "INSTALL-AND-NETWORK.md").write_text(
-        operations, encoding="utf-8"
+        operations, encoding="utf-8", newline="\n"
     )
 
-    status = f"""# Release status
+    status = """# Release status
 
-Candidate ZIP SHA-256: `{summary['candidate_zip_sha256']}`.
+Авторитетные hash и offline-вердикты не хранятся как изменяемый tracked-report.
+Они формируются `tools/run_acceptance.py` только из чистого Git commit/tree и
+попадают в `dist/candidate-X.Y.Z/`:
 
-| Gate | Verdict |
-| --- | --- |
-| `FOUNDATION_SYNTHETIC` | `{summary['FOUNDATION_SYNTHETIC']}` |
-| `CANDIDATE_OFFLINE` | `{summary['CANDIDATE_OFFLINE']}` |
-| `MATCHED_AB` | `{summary['MATCHED_AB']}` |
-| `CODEX_CANARY` | `{summary['CODEX_CANARY']}` |
-| `FULL_RELEASE_CODEX` | `{summary['FULL_RELEASE_CODEX']}` |
-| `PROGRAM_RELEASE` | `{summary['PROGRAM_RELEASE']}` |
+- `codex-base-X.Y.Z.zip`;
+- `release-manifest.json`;
+- `components.lock.json`;
+- `acceptance-evidence.json`;
+- `offline-acceptance-summary.json`.
 
-`CANDIDATE_OFFLINE: PASS` подтверждает deterministic package, 38/38
-Codex-contract tests, fresh Foundation evidence (23/23), а также реальный
-fake-home lifecycle в PowerShell 7 и Windows PowerShell 5.1.
+Candidate manifest связывает evidence; evidence связывает source commit/tree,
+ZIP, package manifest и component lock. Stable promotion сохраняет те же ZIP
+bytes и требует явный `PASS` каждого release-gate.
 
 Не проверено и не разрешено:
 
@@ -191,7 +197,9 @@ fake-home lifecycle в PowerShell 7 и Windows PowerShell 5.1.
 Поэтому `FULL_RELEASE_CODEX` остаётся `NOT_PASS`, а общий program verdict —
 `0/3`.
 """
-    (docs / "RELEASE-STATUS.md").write_text(status, encoding="utf-8")
+    (docs / "RELEASE-STATUS.md").write_text(
+        status, encoding="utf-8", newline="\n"
+    )
     return 0
 
 

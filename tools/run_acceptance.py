@@ -7,14 +7,18 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codex_base.acceptance import write_acceptance_evidence
-from codex_base.release import SUPPORTED_CODEX_CLIENT, build_release
+from codex_base.release import (
+    SUPPORTED_CODEX_CLIENT,
+    assert_clean_git_source,
+    bind_acceptance_evidence,
+    build_release,
+)
 
 
 def _sha256(path: Path) -> str:
@@ -192,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = ROOT
+    source = assert_clean_git_source(root)
     work = root / ".work" / "acceptance"
     if work.exists():
         shutil.rmtree(work)
@@ -202,6 +207,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     if foundation_evidence.get("FOUNDATION_SYNTHETIC") != "PASS":
         raise SystemExit("Foundation evidence is not PASS")
+    foundation_files = _files(foundation)
+    if set(foundation_files) != {
+        "VERSION",
+        "engine-manifest.json",
+        "foundation.ps1",
+    }:
+        raise SystemExit("Foundation engine inventory differs")
+    accepted_builds = foundation_evidence.get("engine_builds")
+    if not isinstance(accepted_builds, dict) or any(
+        not isinstance(accepted_builds.get(shell), dict)
+        or accepted_builds[shell].get("status") != "PASS"
+        or accepted_builds[shell].get("files") != foundation_files
+        for shell in ("ps7", "ps51")
+    ):
+        raise SystemExit("Foundation engine bytes differ from acceptance")
 
     first = build_release(root, work / "build-one", args.version, foundation)
     second = build_release(root, work / "build-two", args.version, foundation)
@@ -265,7 +285,6 @@ def main(argv: list[str] | None = None) -> int:
     dist.mkdir(parents=True)
     for path in (
         first.zip_path,
-        first.manifest_path,
         first.component_lock_path,
     ):
         shutil.copy2(path, dist / path.name)
@@ -274,16 +293,25 @@ def main(argv: list[str] | None = None) -> int:
         destination=dist / "acceptance-evidence.json",
         version=args.version,
         foundation_evidence=foundation_evidence,
+        release_manifest=first.manifest,
         offline_integration=integration,
         test_evidence=tests,
     )
+    shutil.copy2(first.manifest_path, dist / first.manifest_path.name)
+    bound_manifest = bind_acceptance_evidence(
+        dist / first.manifest_path.name,
+        dist / "acceptance-evidence.json",
+    )
     summary = {
-        "generated_at_utc": datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z"),
-        "candidate_dir": str(dist),
+        "source": source,
+        "candidate_dir": dist.relative_to(root).as_posix(),
         "candidate_zip_sha256": integration["candidate_zip_sha256"],
+        "components_lock_sha256": bound_manifest[
+            "components_lock_sha256"
+        ],
+        "acceptance_evidence_sha256": bound_manifest[
+            "acceptance_evidence_sha256"
+        ],
         "FOUNDATION_SYNTHETIC": evidence["FOUNDATION_SYNTHETIC"],
         "CANDIDATE_OFFLINE": evidence["CANDIDATE_OFFLINE"],
         "MATCHED_AB": evidence["MATCHED_AB"],
@@ -291,8 +319,7 @@ def main(argv: list[str] | None = None) -> int:
         "FULL_RELEASE_CODEX": evidence["FULL_RELEASE_CODEX"],
         "PROGRAM_RELEASE": evidence["PROGRAM_RELEASE"],
     }
-    (root / "reports").mkdir(exist_ok=True)
-    (root / "reports" / "offline-acceptance-summary.json").write_text(
+    (dist / "offline-acceptance-summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )

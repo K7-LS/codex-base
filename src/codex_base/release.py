@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import subprocess
+import tempfile
 import zipfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import Iterator
 
 
 SUPPORTED_CODEX_CLIENT = "0.146.0-alpha.3.1"
 SOURCE_REPOSITORY = "https://github.com/daniileliseev1337/claude-base"
+TARGET_REPOSITORY = "https://github.com/daniileliseev1337/codex-base"
+TRANSFORMATION_ID = "codex-native-v1"
 FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
 
@@ -19,6 +26,20 @@ class ReleaseBuild:
     manifest_path: Path
     component_lock_path: Path
     manifest: dict[str, object]
+
+
+def bind_acceptance_evidence(
+    manifest_path: Path,
+    evidence_path: Path,
+) -> dict[str, object]:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("channel") != "candidate":
+        raise ValueError("only a candidate manifest can be evidence-bound")
+    manifest["acceptance_evidence_sha256"] = _sha256_bytes(
+        evidence_path.read_bytes()
+    )
+    manifest_path.write_bytes(_json_bytes(manifest))
+    return manifest
 
 
 def _sha256_bytes(payload: bytes) -> str:
@@ -51,11 +72,148 @@ def _tree_files(root: Path) -> list[Path]:
     )
 
 
+def _git_output(repo_root: Path, *arguments: str) -> str:
+    result = subprocess.run(
+        ["git", *arguments],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "git failed").strip()
+        raise ValueError(f"Git source identity failed: {detail}")
+    return result.stdout.strip()
+
+
+def git_source_identity(repo_root: Path) -> dict[str, str]:
+    return {
+        "repository": TARGET_REPOSITORY,
+        "commit": _git_output(repo_root, "rev-parse", "HEAD"),
+        "tree": _git_output(repo_root, "rev-parse", "HEAD^{tree}"),
+        "transformation": TRANSFORMATION_ID,
+    }
+
+
+def assert_clean_git_source(repo_root: Path) -> dict[str, str]:
+    source_roots = (
+        repo_root / "AGENTS.md",
+        repo_root / "MIGRATION-SOURCE.json",
+        repo_root / "agents",
+        repo_root / "catalog",
+        repo_root / "cold",
+        repo_root / "control-skills",
+        repo_root / "runtime",
+        repo_root / "skills",
+    )
+    queue = list(source_roots)
+    while queue:
+        path = queue.pop()
+        if not path.exists() and not path.is_symlink():
+            raise ValueError(f"release source is missing: {path.name}")
+        metadata = path.lstat()
+        attributes = getattr(metadata, "st_file_attributes", 0)
+        is_reparse = path.is_symlink() or bool(attributes & 0x400)
+        if is_reparse:
+            raise ValueError(
+                f"release source contains a reparse point: {path}"
+            )
+        if path.is_dir():
+            queue.extend(Path(entry.path) for entry in os.scandir(path))
+    status = _git_output(
+        repo_root,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+    )
+    if status:
+        raise ValueError(
+            "release acceptance requires a clean Git worktree"
+        )
+    return git_source_identity(repo_root)
+
+
+@contextmanager
+def _export_committed_tree(
+    repo_root: Path,
+    identity: dict[str, str],
+) -> Iterator[Path]:
+    commit = identity["commit"]
+    listing = subprocess.run(
+        ["git", "ls-tree", "-r", "-z", commit],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+    )
+    if listing.returncode != 0:
+        raise ValueError("Git tree inventory failed")
+    tracked: set[str] = set()
+    for record in listing.stdout.split(b"\0"):
+        if not record:
+            continue
+        try:
+            header, raw_path = record.split(b"\t", 1)
+            mode, object_type, _ = header.decode("ascii").split(" ", 2)
+            relative = raw_path.decode("utf-8")
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise ValueError("Git tree inventory is malformed") from exc
+        if object_type != "blob" or mode not in {"100644", "100755"}:
+            raise ValueError(
+                f"release source contains a non-regular entry: {relative}"
+            )
+        if (
+            not relative
+            or PurePosixPath(relative).is_absolute()
+            or ".." in PurePosixPath(relative).parts
+            or "\\" in relative
+        ):
+            raise ValueError(f"release source path is unsafe: {relative}")
+        tracked.add(relative)
+
+    with tempfile.TemporaryDirectory(prefix="codex-base-git-tree-") as temporary:
+        temporary_root = Path(temporary)
+        archive_path = temporary_root / "source.zip"
+        exported = subprocess.run(
+            [
+                "git",
+                "archive",
+                "--format=zip",
+                f"--output={archive_path}",
+                commit,
+            ],
+            cwd=repo_root,
+            check=False,
+            capture_output=True,
+        )
+        if exported.returncode != 0:
+            raise ValueError("Git source export failed")
+        source_root = temporary_root / "source"
+        source_root.mkdir()
+        seen: set[str] = set()
+        with zipfile.ZipFile(archive_path) as archive:
+            for info in archive.infolist():
+                if info.is_dir():
+                    continue
+                name = info.filename
+                if name not in tracked or name in seen:
+                    raise ValueError(
+                        f"Git archive differs from tree inventory: {name}"
+                    )
+                destination = source_root.joinpath(*PurePosixPath(name).parts)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(archive.read(info))
+                seen.add(name)
+        if seen != tracked:
+            raise ValueError("Git archive is missing tracked source files")
+        yield source_root
+
+
 def _component_record(
     repo_root: Path,
     component_id: str,
     files: list[Path],
-    source: dict[str, str],
+    source: dict[str, object],
 ) -> dict[str, object]:
     rows: list[dict[str, object]] = []
     digest = hashlib.sha256()
@@ -81,14 +239,23 @@ def _component_record(
     }
 
 
-def build_component_lock(repo_root: Path, version: str) -> dict[str, object]:
+def build_component_lock(
+    repo_root: Path,
+    version: str,
+    rendered_source: dict[str, str] | None = None,
+) -> dict[str, object]:
     migration = json.loads(
         (repo_root / "MIGRATION-SOURCE.json").read_text(encoding="utf-8")
     )
-    source = {
+    upstream = {
         "repository": str(migration["source"]["repository"]),
         "commit": str(migration["source"]["commit"]),
         "tree": str(migration["source"]["tree"]),
+    }
+    rendered = rendered_source or git_source_identity(repo_root)
+    source = {
+        "upstream_migration": upstream,
+        "rendered_target": rendered,
     }
     agents_catalog = json.loads(
         (repo_root / "catalog" / "agents.json").read_text(encoding="utf-8")
@@ -136,7 +303,7 @@ def build_component_lock(repo_root: Path, version: str) -> dict[str, object]:
         "schema_version": 1,
         "target": "codex",
         "version": version,
-        "source": source,
+        "provenance": source,
         "components": {
             "agents": agents,
             "skills": skills,
@@ -156,7 +323,9 @@ def _add_tree(
         entries[destination] = path.read_bytes()
 
 
-def _validate_foundation(foundation_root: Path) -> str:
+def _validate_foundation(
+    foundation_root: Path,
+) -> tuple[str, str]:
     required = (
         foundation_root / "VERSION",
         foundation_root / "foundation.ps1",
@@ -187,7 +356,9 @@ def _validate_foundation(foundation_root: Path) -> str:
     )
     if manifest.get("foundation_ps1_sha256") != script_hash:
         raise ValueError("Foundation engine SHA-256 mismatch")
-    return version
+    return version, _sha256_bytes(
+        (foundation_root / "engine-manifest.json").read_bytes()
+    )
 
 
 def _write_zip(path: Path, entries: dict[str, bytes]) -> None:
@@ -211,22 +382,61 @@ def build_release(
     version: str,
     foundation_root: Path,
 ) -> ReleaseBuild:
-    foundation_version = _validate_foundation(foundation_root)
+    foundation_version, foundation_manifest_sha256 = _validate_foundation(
+        foundation_root
+    )
     dist_root.mkdir(parents=True, exist_ok=True)
+    identity = git_source_identity(repo_root)
+    with _export_committed_tree(repo_root, identity) as source_root:
+        component_lock = build_component_lock(
+            source_root,
+            version,
+            rendered_source=identity,
+        )
+        return _build_release_from_export(
+            source_root=source_root,
+            dist_root=dist_root,
+            version=version,
+            foundation_root=foundation_root,
+            foundation_version=foundation_version,
+            foundation_manifest_sha256=foundation_manifest_sha256,
+            component_lock=component_lock,
+            identity=identity,
+        )
 
-    component_lock = build_component_lock(repo_root, version)
+
+def _build_release_from_export(
+    *,
+    source_root: Path,
+    dist_root: Path,
+    version: str,
+    foundation_root: Path,
+    foundation_version: str,
+    foundation_manifest_sha256: str,
+    component_lock: dict[str, object],
+    identity: dict[str, str],
+) -> ReleaseBuild:
+    component_lock_bytes = _json_bytes(component_lock)
     entries: dict[str, bytes] = {
-        ".codex/AGENTS.md": (repo_root / "AGENTS.md").read_bytes(),
-        ".codex/config.toml": (repo_root / "runtime" / "config.toml").read_bytes(),
-        ".codex/hooks.json": (repo_root / "runtime" / "hooks.json").read_bytes(),
+        ".codex/AGENTS.md": (source_root / "AGENTS.md").read_bytes(),
+        ".codex/config.toml": (
+            source_root / "runtime" / "config.toml"
+        ).read_bytes(),
+        ".codex/hooks.json": (
+            source_root / "runtime" / "hooks.json"
+        ).read_bytes(),
         ".codex/base/VERSION": (version + "\n").encode("utf-8"),
-        ".codex/base/components.lock.json": _json_bytes(component_lock),
+        ".codex/base/components.lock.json": component_lock_bytes,
     }
-    _add_tree(entries, repo_root / "agents", ".codex/agents")
-    _add_tree(entries, repo_root / "skills", ".agents/skills")
-    _add_tree(entries, repo_root / "control-skills", ".agents/skills")
-    _add_tree(entries, repo_root / "cold", ".codex/base/cold")
-    _add_tree(entries, repo_root / "runtime" / "hooks", ".codex/base/runtime/hooks")
+    _add_tree(entries, source_root / "agents", ".codex/agents")
+    _add_tree(entries, source_root / "skills", ".agents/skills")
+    _add_tree(entries, source_root / "control-skills", ".agents/skills")
+    _add_tree(entries, source_root / "cold", ".codex/base/cold")
+    _add_tree(
+        entries,
+        source_root / "runtime" / "hooks",
+        ".codex/base/runtime/hooks",
+    )
     _add_tree(
         entries,
         foundation_root,
@@ -300,12 +510,15 @@ def build_release(
         "channel": "candidate",
         "supported_codex_client": SUPPORTED_CODEX_CLIENT,
         "foundation_engine_version": foundation_version,
+        "foundation_engine_manifest_sha256": foundation_manifest_sha256,
+        "source": identity,
         "asset": {
             "name": zip_path.name,
             "sha256": _sha256_bytes(zip_payload),
             "bytes": len(zip_payload),
         },
         "package_manifest_sha256": _sha256_bytes(package_manifest_bytes),
+        "components_lock_sha256": _sha256_bytes(component_lock_bytes),
         "requires": {
             "immutable_release": True,
             "release_attestation": True,
@@ -321,7 +534,7 @@ def build_release(
     manifest_path = dist_root / "release-manifest.json"
     lock_path = dist_root / "components.lock.json"
     manifest_path.write_bytes(_json_bytes(release_manifest))
-    lock_path.write_bytes(_json_bytes(component_lock))
+    lock_path.write_bytes(component_lock_bytes)
     return ReleaseBuild(
         zip_path=zip_path,
         manifest_path=manifest_path,

@@ -21,7 +21,10 @@ rollback'ом.
 `auth.json`, sessions, archived sessions, memories, state/SQLite,
 browser/computer-use state, external imports, проекты и рабочие папки.
 Foundation хранит собственные transaction state и backups отдельно в
-`~/.llm-foundation/`.
+`~/.llm-foundation/`. Install/rollback используют exclusive lock; rollback
+перед первой мутацией проверяет hash-bound snapshot и каждый backup-объект,
+восстанавливает из staging и завершает recovery-journal только последним
+шагом.
 
 ## Сеть
 
@@ -31,6 +34,11 @@ Foundation хранит собственные transaction state и backups от
   `verify-asset`.
 - Foundation engine: полностью offline, сетевого кода нет.
 - Consumer upload, push, feedback, telemetry и session-report отсутствуют.
+
+Перед install updater проверяет immutable release и attestation каждого asset,
+затем SHA ZIP/manifest/lock/evidence, все release-gates и совпадение внешнего
+component lock с embedded-копией. Запускается только Foundation engine,
+извлечённый из уже проверенного ZIP и совпавший с его pinned version/hash.
 
 ## Команды
 

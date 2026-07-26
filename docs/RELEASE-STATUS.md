@@ -1,19 +1,18 @@
 # Release status
 
-Candidate ZIP SHA-256: `545c0f80b0c3de4785f8a75022c014729b1561727e5bbe253e3f0848bce973f2`.
+Авторитетные hash и offline-вердикты не хранятся как изменяемый tracked-report.
+Они формируются `tools/run_acceptance.py` только из чистого Git commit/tree и
+попадают в `dist/candidate-X.Y.Z/`:
 
-| Gate | Verdict |
-| --- | --- |
-| `FOUNDATION_SYNTHETIC` | `PASS` |
-| `CANDIDATE_OFFLINE` | `PASS` |
-| `MATCHED_AB` | `NOT_RUN` |
-| `CODEX_CANARY` | `NOT_RUN` |
-| `FULL_RELEASE_CODEX` | `NOT_PASS` |
-| `PROGRAM_RELEASE` | `0/3` |
+- `codex-base-X.Y.Z.zip`;
+- `release-manifest.json`;
+- `components.lock.json`;
+- `acceptance-evidence.json`;
+- `offline-acceptance-summary.json`.
 
-`CANDIDATE_OFFLINE: PASS` подтверждает deterministic package, 38/38
-Codex-contract tests, fresh Foundation evidence (23/23), а также реальный
-fake-home lifecycle в PowerShell 7 и Windows PowerShell 5.1.
+Candidate manifest связывает evidence; evidence связывает source commit/tree,
+ZIP, package manifest и component lock. Stable promotion сохраняет те же ZIP
+bytes и требует явный `PASS` каждого release-gate.
 
 Не проверено и не разрешено:
 

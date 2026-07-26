@@ -21,6 +21,17 @@ REQUIRED_ASSETS = {
     "components.lock.json",
     "acceptance-evidence.json",
 }
+REQUIRED_FULL_RELEASE_GATES = (
+    "FOUNDATION_SYNTHETIC",
+    "OFFLINE_CODEX_CONTENT",
+    "STATIC_TOKEN_ACCEPTANCE",
+    "CODEX_OFFLINE_INTEGRATION",
+    "CODEX_TESTS",
+    "CANDIDATE_OFFLINE",
+    "MATCHED_AB",
+    "CODEX_CANARY",
+    "FULL_RELEASE_CODEX",
+)
 
 Runner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 
@@ -84,21 +95,152 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _json_bytes(value: object) -> bytes:
+    return (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    ).encode("utf-8")
+
+
+def _release_binding(manifest: dict[str, object]) -> dict[str, object]:
+    keys = (
+        "target",
+        "version",
+        "tag",
+        "asset",
+        "package_manifest_sha256",
+        "components_lock_sha256",
+        "source",
+        "foundation_engine_version",
+        "foundation_engine_manifest_sha256",
+    )
+    if any(key not in manifest for key in keys):
+        raise RuntimeError("release manifest binding is incomplete")
+    return {key: manifest[key] for key in keys}
+
+
+def _verify_evidence_body(evidence: dict[str, object]) -> None:
+    body = dict(evidence)
+    declared = body.pop("evidence_body_sha256", None)
+    actual = hashlib.sha256(_json_bytes(body)).hexdigest()
+    if declared != actual:
+        raise RuntimeError("acceptance evidence body SHA-256 mismatch")
+
+
+def _foundation_from_verified_package(
+    release_dir: Path,
+    archive: zipfile.ZipFile,
+    package_manifest: dict[str, object],
+    release_manifest: dict[str, object],
+) -> Path:
+    version = str(release_manifest.get("foundation_engine_version") or "")
+    if (
+        not re.fullmatch(r"\d+\.\d+\.\d+", version)
+        or package_manifest.get("foundation_engine_version") != version
+    ):
+        raise RuntimeError("Foundation engine version binding differs")
+    prefix = f".codex/base/foundation/{version}/"
+    required = {
+        "VERSION": prefix + "VERSION",
+        "foundation.ps1": prefix + "foundation.ps1",
+        "engine-manifest.json": prefix + "engine-manifest.json",
+    }
+    names = archive.namelist()
+    payloads: dict[str, bytes] = {}
+    for label, name in required.items():
+        if names.count(name) != 1:
+            raise RuntimeError(f"verified Foundation file differs: {label}")
+        payloads[label] = archive.read(name)
+
+    rows = {
+        str(row.get("path")): row
+        for row in package_manifest.get("files", [])
+        if isinstance(row, dict)
+    }
+    for label, name in required.items():
+        row = rows.get(name)
+        payload = payloads[label]
+        if (
+            not isinstance(row, dict)
+            or row.get("sha256")
+            != hashlib.sha256(payload).hexdigest()
+            or row.get("bytes") != len(payload)
+        ):
+            raise RuntimeError(
+                f"Foundation package row differs: {label}"
+            )
+
+    if payloads["VERSION"].decode("utf-8").strip() != version:
+        raise RuntimeError("Foundation VERSION differs")
+    if hashlib.sha256(payloads["engine-manifest.json"]).hexdigest() != (
+        release_manifest.get("foundation_engine_manifest_sha256")
+    ):
+        raise RuntimeError("Foundation engine manifest SHA-256 mismatch")
+    engine_manifest = json.loads(
+        payloads["engine-manifest.json"].decode("utf-8")
+    )
+    if (
+        engine_manifest.get("schema_version") != 1
+        or engine_manifest.get("protocol_version") != 1
+        or engine_manifest.get("engine_version") != version
+        or engine_manifest.get("network") != "offline"
+        or engine_manifest.get("commands")
+        != ["doctor", "install", "inventory", "plan", "rollback"]
+        or engine_manifest.get("supported_powershell") != ["5.1", "7"]
+        or engine_manifest.get("foundation_ps1_sha256")
+        != hashlib.sha256(payloads["foundation.ps1"]).hexdigest()
+    ):
+        raise RuntimeError("Foundation engine contract differs")
+
+    destination = release_dir / "verified-foundation" / version
+    destination.mkdir(parents=True, exist_ok=False)
+    for label, payload in payloads.items():
+        (destination / label).write_bytes(payload)
+    return destination / "foundation.ps1"
+
+
 def verify_downloaded_release(
     release_dir: Path,
     tag: str,
     runner: Runner = _default_runner,
-) -> tuple[Path, dict[str, object]]:
+) -> tuple[Path, dict[str, object], Path]:
     _run_checked(runner, ["gh", "release", "verify", tag, "-R", REPOSITORY])
+    match = TAG_PATTERN.fullmatch(tag)
+    if not match:
+        raise RuntimeError("release tag is invalid")
+    version = ".".join(match.groups())
+    expected_zip = release_dir / f"codex-base-{version}.zip"
     manifest_path = release_dir / "release-manifest.json"
     evidence_path = release_dir / "acceptance-evidence.json"
     lock_path = release_dir / "components.lock.json"
     for path in (manifest_path, evidence_path, lock_path):
         if not path.is_file():
             raise RuntimeError(f"missing release asset: {path.name}")
+    if not expected_zip.is_file():
+        raise RuntimeError(f"missing release asset: {expected_zip.name}")
+    declared_assets = {
+        expected_zip.name,
+        *REQUIRED_ASSETS,
+    }
+    for name in sorted(declared_assets):
+        _run_checked(
+            runner,
+            [
+                "gh",
+                "release",
+                "verify-asset",
+                tag,
+                str(release_dir / name),
+                "-R",
+                REPOSITORY,
+            ],
+        )
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("tag") != tag or manifest.get("target") != "codex":
+    if (
+        manifest.get("tag") != tag
+        or manifest.get("target") != "codex"
+        or manifest.get("version") != version
+    ):
         raise RuntimeError("release manifest target/tag mismatch")
     if manifest.get("channel") != "stable":
         raise RuntimeError("release manifest is not stable")
@@ -106,35 +248,94 @@ def verify_downloaded_release(
     if not isinstance(asset, dict):
         raise RuntimeError("release manifest has no asset record")
     zip_path = release_dir / str(asset.get("name") or "")
-    if not zip_path.is_file():
-        raise RuntimeError("release ZIP is missing")
-    if _sha256(zip_path) != asset.get("sha256"):
+    if zip_path != expected_zip:
+        raise RuntimeError("release ZIP name differs")
+    if (
+        _sha256(zip_path) != asset.get("sha256")
+        or zip_path.stat().st_size != asset.get("bytes")
+    ):
         raise RuntimeError("release ZIP SHA-256 mismatch")
+    source = manifest.get("source")
+    if (
+        not isinstance(source, dict)
+        or str(source.get("repository") or "").removeprefix("https://")
+        != "github.com/daniileliseev1337/codex-base"
+        or not re.fullmatch(r"[0-9a-f]{40}", str(source.get("commit") or ""))
+        or not re.fullmatch(r"[0-9a-f]{40}", str(source.get("tree") or ""))
+        or source.get("transformation") != "codex-native-v1"
+    ):
+        raise RuntimeError("release source provenance differs")
+    lock_bytes = lock_path.read_bytes()
+    if hashlib.sha256(lock_bytes).hexdigest() != manifest.get(
+        "components_lock_sha256"
+    ):
+        raise RuntimeError("components lock SHA-256 mismatch")
+    external_lock = json.loads(lock_bytes)
+    if not isinstance(external_lock, dict):
+        raise RuntimeError("components lock must contain an object")
+    provenance = external_lock.get("provenance")
+    if (
+        external_lock.get("target") != "codex"
+        or external_lock.get("version") != version
+        or not isinstance(provenance, dict)
+        or provenance.get("rendered_target")
+        != manifest.get("source")
+    ):
+        raise RuntimeError("components lock provenance differs")
     try:
         with zipfile.ZipFile(zip_path) as package:
             manifest_name = "package-manifest.json"
             if package.namelist().count(manifest_name) != 1:
                 raise RuntimeError("release ZIP package manifest is missing or duplicated")
-            package_manifest = package.read(manifest_name)
+            package_manifest_bytes = package.read(manifest_name)
+            embedded_lock_name = ".codex/base/components.lock.json"
+            if package.namelist().count(embedded_lock_name) != 1:
+                raise RuntimeError(
+                    "embedded components lock is missing or duplicated"
+                )
+            embedded_lock = package.read(embedded_lock_name)
+            if hashlib.sha256(package_manifest_bytes).hexdigest() != (
+                manifest.get("package_manifest_sha256")
+            ):
+                raise RuntimeError("package manifest SHA-256 mismatch")
+            if embedded_lock != lock_bytes:
+                raise RuntimeError("embedded components lock differs")
+            package_manifest = json.loads(package_manifest_bytes)
+            if not isinstance(package_manifest, dict):
+                raise RuntimeError(
+                    "package manifest must contain an object"
+                )
+            foundation = _foundation_from_verified_package(
+                release_dir,
+                package,
+                package_manifest,
+                manifest,
+            )
     except (OSError, KeyError, zipfile.BadZipFile) as exc:
         raise RuntimeError(f"release ZIP package manifest is unreadable: {exc}") from exc
-    if hashlib.sha256(package_manifest).hexdigest() != manifest.get(
-        "package_manifest_sha256"
+    if (
+        package_manifest.get("target") != "codex"
+        or package_manifest.get("version") != version
     ):
-        raise RuntimeError("package manifest SHA-256 mismatch")
+        raise RuntimeError("package manifest target/version differs")
 
-    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
-    if evidence.get("FULL_RELEASE_CODEX") != "PASS":
-        raise RuntimeError("FULL_RELEASE_CODEX is not PASS")
-
-    declared = {zip_path.name, *REQUIRED_ASSETS}
-    for name in sorted(declared):
-        path = release_dir / name
-        _run_checked(
-            runner,
-            ["gh", "release", "verify-asset", tag, str(path), "-R", REPOSITORY],
-        )
-    return zip_path, manifest
+    evidence_bytes = evidence_path.read_bytes()
+    if hashlib.sha256(evidence_bytes).hexdigest() != manifest.get(
+        "acceptance_evidence_sha256"
+    ):
+        raise RuntimeError("acceptance evidence asset SHA-256 mismatch")
+    evidence = json.loads(evidence_bytes)
+    if not isinstance(evidence, dict):
+        raise RuntimeError("acceptance evidence must contain an object")
+    _verify_evidence_body(evidence)
+    if evidence.get("release_binding") != _release_binding(manifest):
+        raise RuntimeError("acceptance evidence release binding differs")
+    for gate in REQUIRED_FULL_RELEASE_GATES:
+        if evidence.get(gate) != "PASS":
+            raise RuntimeError(f"{gate} is not PASS")
+    if evidence.get("PROGRAM_RELEASE") != "1/3":
+        raise RuntimeError("PROGRAM_RELEASE is not 1/3")
+    return zip_path, manifest, foundation
 
 
 def download_release(
@@ -172,21 +373,6 @@ def _powershell() -> str:
         if resolved:
             return resolved
     raise RuntimeError("BLOCKED: PowerShell is required")
-
-
-def _foundation_path() -> Path:
-    override = os.environ.get("CODEX_BASE_FOUNDATION")
-    if override:
-        return Path(override)
-    base = Path(os.environ.get("CODEX_BASE_HOME_OVERRIDE") or Path.home() / ".codex" / "base")
-    candidates = sorted(
-        (base / "foundation").glob("*/foundation.ps1"),
-        key=lambda path: path.parent.name,
-        reverse=True,
-    )
-    if not candidates:
-        raise RuntimeError("BLOCKED: pinned Foundation engine is missing")
-    return candidates[0]
 
 
 def detect_codex_client(
@@ -251,8 +437,11 @@ def main(argv: list[str] | None = None) -> int:
         with tempfile.TemporaryDirectory(prefix="codex-base-sync-") as temporary:
             release_dir = Path(temporary)
             download_release(tag, release_dir)
-            zip_path, _ = verify_downloaded_release(release_dir, tag)
-            invoke_foundation(zip_path, _foundation_path())
+            zip_path, _, foundation = verify_downloaded_release(
+                release_dir,
+                tag,
+            )
+            invoke_foundation(zip_path, foundation)
         print(f"Codex-base {tag} installed and verified.")
         return 0
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as exc:

@@ -31,9 +31,14 @@ upload exists.
 $env:PYTHONPATH = "src"
 py -3.12 -m pytest -q
 py -3.12 .\tools\run_acceptance.py `
-  --foundation ..\llm-foundation-installer\dist\foundation-engine-0.1.0 `
-  --foundation-evidence ..\llm-foundation-installer\reports\foundation-acceptance.json
+  --foundation ..\llm-foundation-installer\.work\acceptance\engine-ps7 `
+  --foundation-evidence ..\llm-foundation-installer\dist\foundation-acceptance.json
 ```
+
+Acceptance refuses a dirty worktree. Candidate bytes are exported from the
+recorded Git commit/tree; ZIP, package manifest, component lock and evidence
+are cross-bound by SHA-256. The updater extracts and runs only the exact
+Foundation engine inside that verified ZIP.
 
 The resulting candidate remains fail-closed:
 
@@ -43,3 +48,15 @@ The resulting candidate remains fail-closed:
 
 Paid matched A/B, a live hub canary, and stable release publication each need
 separate owner approval.
+
+After those gates produce final `PASS` evidence, stable assets can be prepared
+without rebuilding the ZIP:
+
+```powershell
+py -3.12 .\tools\promote_candidate.py `
+  --candidate .\dist\candidate-0.1.0 `
+  --final-evidence <approved-final-evidence.json> `
+  --output .\dist\stable-0.1.0
+```
+
+This command does not publish to GitHub.

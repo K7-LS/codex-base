@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import tomllib
+import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -84,20 +85,37 @@ def validate_structured_files(repo_root: Path) -> dict[str, object]:
 def scan_secrets(repo_root: Path) -> dict[str, object]:
     findings: list[dict[str, object]] = []
     for path in _repository_files(repo_root):
-        text = _read_text(path)
-        if text is None:
-            continue
         relative = path.relative_to(repo_root).as_posix()
-        for line_number, line in enumerate(text.splitlines(), start=1):
-            for kind, pattern in _SECRET_PATTERNS.items():
-                if pattern.search(line):
-                    findings.append(
-                        {
-                            "path": relative,
-                            "line": line_number,
-                            "kind": kind,
-                        }
-                    )
+        views: list[tuple[str, bytes]] = [("raw", path.read_bytes())]
+        try:
+            if zipfile.is_zipfile(path):
+                with zipfile.ZipFile(path) as archive:
+                    if len(archive.infolist()) > 2000:
+                        raise ValueError("archive entry limit exceeded")
+                    for info in archive.infolist():
+                        if info.is_dir() or info.file_size > 16 * 1024 * 1024:
+                            continue
+                        views.append((info.filename, archive.read(info)))
+        except (OSError, ValueError, zipfile.BadZipFile):
+            pass
+        seen: set[tuple[str, str, int]] = set()
+        for member, payload in views:
+            text = payload.decode("utf-8", errors="ignore")
+            for line_number, line in enumerate(text.splitlines(), start=1):
+                for kind, pattern in _SECRET_PATTERNS.items():
+                    if pattern.search(line):
+                        key = (member, kind, line_number)
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        findings.append(
+                            {
+                                "path": relative,
+                                "member": member,
+                                "line": line_number,
+                                "kind": kind,
+                            }
+                        )
     return {
         "status": "PASS" if not findings else "NOT_PASS",
         "patterns": sorted(_SECRET_PATTERNS),
@@ -212,11 +230,40 @@ def _json_bytes(value: object) -> bytes:
     ).encode("utf-8")
 
 
+def release_binding_from_manifest(
+    manifest: dict[str, object],
+) -> dict[str, object]:
+    required = (
+        "target",
+        "version",
+        "tag",
+        "asset",
+        "package_manifest_sha256",
+        "components_lock_sha256",
+        "source",
+        "foundation_engine_version",
+        "foundation_engine_manifest_sha256",
+    )
+    missing = [key for key in required if key not in manifest]
+    if missing:
+        raise ValueError(
+            f"release manifest lacks binding fields: {', '.join(missing)}"
+        )
+    return {key: manifest[key] for key in required}
+
+
+def evidence_body_sha256(evidence: dict[str, object]) -> str:
+    body = dict(evidence)
+    body.pop("evidence_body_sha256", None)
+    return hashlib.sha256(_json_bytes(body)).hexdigest()
+
+
 def write_acceptance_evidence(
     repo_root: Path,
     destination: Path,
     version: str,
     foundation_evidence: dict[str, object] | None,
+    release_manifest: dict[str, object],
     offline_integration: dict[str, object] | None = None,
     test_evidence: dict[str, object] | None = None,
 ) -> dict[str, object]:
@@ -263,6 +310,7 @@ def write_acceptance_evidence(
         "schema_version": 1,
         "target": "codex",
         "version": version,
+        "release_binding": release_binding_from_manifest(release_manifest),
         "component_counts": counts,
         "checks": {
             "structured_files": structured,
@@ -296,10 +344,7 @@ def write_acceptance_evidence(
             "A stable release must reuse the accepted candidate ZIP bytes.",
         ],
     }
-    payload = _json_bytes(evidence)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(payload)
-    evidence["evidence_sha256"] = hashlib.sha256(payload).hexdigest()
-    # The hash describes the canonical evidence body before its self-reference.
+    evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
     destination.write_bytes(_json_bytes(evidence))
     return evidence
