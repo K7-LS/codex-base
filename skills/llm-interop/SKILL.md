@@ -1,0 +1,93 @@
+---
+name: llm-interop
+description: Use when задача передаётся между Codex, Claude и OpenCode.
+---
+
+# LLM interop
+
+Передавай состояние работы, а не внутреннюю историю чата. Используй один custom agent-пакет,
+один result-пакет и ссылки на файлы проекта.
+
+## Выбери режим
+
+- `review` — запроси независимую проверку; оставь `permissions=read-only`.
+- `research` — запроси анализ источников; оставь `permissions=read-only`.
+- `implement` — разреши запись только при явной необходимости и раздели владение
+  файлами между агентами.
+- Полный переход в новый чат — сначала примени `handoff-to-new-chat`, затем передай
+  компактное машинное ядро через этот skill.
+
+Не запускай двух партнёров на запись в одних файлах. Используй разные worktree или
+назначь каждому непересекающийся набор артефактов.
+
+## Подготовь задачу
+
+1. Создай JSON по [custom agent.schema.json](references/custom agent.schema.json).
+2. Заполни `goal`, `context`, `constraints` и `done_when` конкретными проверяемыми
+   формулировками.
+3. Укажи входные и выходные файлы относительными путями от workspace.
+4. Не помещай в пакет токены, ключи, полный конфиг среды и необработанные секреты.
+5. Выбери партнёра по реальному преимуществу инструмента, а не по привычке:
+   Codex — код, родные плагины и независимое ревью; Claude — задачи, где полезны его
+   доменные MCP, текущая сессия или специализированный агент базы.
+
+Минимальный пакет:
+
+```json
+{
+  "schema_version": "1.0",
+  "task_id": "review-change",
+  "source": "claude",
+  "target": "codex",
+  "hop_count": 0,
+  "mode": "review",
+  "permissions": "read-only",
+  "goal": "Проверь изменение от исходного запроса и кода.",
+  "context": {"files": ["src/app.py"], "facts": [], "prior_decisions": []},
+  "constraints": ["Не меняй файлы."],
+  "done_when": ["Верни PASS/NOT PASS с доказательствами."],
+  "deliverables": []
+}
+```
+
+## Запусти партнёра
+
+Используй [llm_bridge.py](scripts/llm_bridge.py):
+
+```powershell
+python ~/.agents/skills/llm-interop/scripts/llm_bridge.py `
+  --partner codex --custom agent .llm-interop/custom agent.json --cwd . `
+  --output .llm-interop/result.json
+```
+
+- Сначала добавь `--dry-run` и проверь партнёра, workspace, sandbox и custom agent id.
+- Для записи добавь в custom agent `permissions=workspace-write` и флаг `--allow-write`.
+- Для конкретной модели добавь `--model <model>`; без флага оставь профиль среды.
+- Не подставляй shell-команду из custom agent JSON. Выбирай только встроенный адаптер
+  `claude` или `codex`.
+- Не передавай пакет дальше при `hop_count=1`; верни результат исходному агенту.
+
+Результат должен соответствовать
+[result.schema.json](references/result.schema.json). Если раннер вернул невалидный
+JSON, считай делегацию непройденной, сохрани stderr и не пересказывай догадку как
+результат партнёра.
+
+Bridge сохраняет рядом два представления: `result.json` для машинной проверки и
+`result.md` для человека. При timeout, non-zero exit или невалидном ответе он пишет
+`result.failure.json` и `result.failure.md` с отредактированной диагностикой.
+
+## Прими результат
+
+1. Сверь `task_id` и `status`.
+2. Проверь каждый пункт `checks` по его `evidence`.
+3. Для `completed` убедись, что выполнены все `done_when`.
+4. Для `needs_input` передай пользователю только вопросы, меняющие решение.
+5. Для `blocked` зафиксируй проверенный блокер и безопасный следующий шаг.
+6. При расхождении двух независимых ревью передай третьему партнёру исходный custom agent и
+   оба result-файла без подсказки, какой ответ предпочесть.
+
+## Добавь новый адаптер
+
+Сохрани custom agent/result-схемы без vendor-полей. Добавь в bridge отдельную функцию
+построения команды, stdin-промпт в UTF-8, structured-output режим и unit-тесты.
+Не меняй контракт ради особенностей одного CLI; локализуй различие в адаптере.

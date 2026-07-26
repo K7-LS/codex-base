@@ -1,0 +1,10 @@
+# Managed Codex-base defaults for codex-cli 0.146.0-alpha.3.1.
+# Model, reasoning effort, providers, MCP servers and plugins are intentionally unset.
+project_doc_max_bytes = 8192
+check_for_update_on_startup = false
+
+[features]
+hooks = true
+
+[agents]
+enabled = true

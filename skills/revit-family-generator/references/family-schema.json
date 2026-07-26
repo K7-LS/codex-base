@@ -1,0 +1,576 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://archsmarter.com/schemas/revit-family/v0.1",
+  "title": "Revit Family Definition",
+  "description": "Schema for defining Revit families from text prompts. Generated JSON conforming to this schema is consumed by a C# executor that builds the family in the Revit Family Editor using the FamilyCreate API.",
+  "type": "object",
+  "required": ["metadata", "units", "reference_planes", "parameters", "geometry"],
+  "additionalProperties": false,
+
+  "properties": {
+
+    "metadata": {
+      "type": "object",
+      "description": "Descriptive information about the family definition.",
+      "required": ["description", "schema_version", "category"],
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Human readable description of the family and its key features."
+        },
+        "schema_version": {
+          "type": "string",
+          "description": "Version of this schema the definition conforms to.",
+          "const": "0.1"
+        },
+        "category": {
+          "type": "string",
+          "description": "Revit family category.",
+          "enum": [
+            "Casework",
+            "Furniture",
+            "Doors",
+            "Windows",
+            "Generic Models",
+            "Specialty Equipment"
+          ]
+        },
+        "prompt": {
+          "type": "string",
+          "description": "The original user prompt that generated this definition. Preserved for traceability."
+        },
+        "origin_offset": {
+          "$ref": "#/$defs/point_3d",
+          "description": "Optional offset of the family origin from the geometric center. Useful for wall hosted families, doors, and windows where the insertion point is not at the center of the geometry. Defaults to {x: 0, y: 0, z: 0} if omitted."
+        }
+      }
+    },
+
+    "units": {
+      "type": "string",
+      "description": "Unit system for all numeric values in the definition.",
+      "enum": ["inches", "feet", "millimeters", "centimeters", "meters"]
+    },
+
+    "subcategories": {
+      "type": "array",
+      "description": "Custom subcategories for organizing geometry within the family. Each geometry element can reference one of these.",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+
+    "reference_planes": {
+      "type": "array",
+      "description": "Named reference planes that define the parametric skeleton of the family. Geometry and constraints attach to these.",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/reference_plane"
+      }
+    },
+
+    "parameters": {
+      "type": "array",
+      "description": "Family parameters that drive geometry and constraints.",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/parameter"
+      }
+    },
+
+    "geometry": {
+      "type": "array",
+      "description": "Solid and void geometry elements that define the 3D form of the family.",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/geometry_element"
+      }
+    },
+
+    "constraints": {
+      "type": "array",
+      "description": "Relationships that lock geometry to reference planes, making the family parametric.",
+      "items": {
+        "$ref": "#/$defs/constraint"
+      }
+    },
+
+    "_TODO": {
+      "type": "array",
+      "description": "Planned features not yet supported in this schema version.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+
+  "$defs": {
+
+    "expression": {
+      "description": "A numeric value or a string expression referencing parameters. Parameter names use underscores in place of spaces (e.g., Material_Thickness). Supports basic arithmetic: +, -, *, /, and parentheses.",
+      "oneOf": [
+        { "type": "number" },
+        { "type": "string", "pattern": "^[a-zA-Z0-9_\\s\\+\\-\\*\\/\\(\\)\\.]+$" }
+      ]
+    },
+
+    "reference_plane": {
+      "type": "object",
+      "description": "A named reference plane positioned along one of the three principal axes.",
+      "required": ["name", "direction", "offset"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human readable name for the reference plane."
+        },
+        "direction": {
+          "type": "string",
+          "description": "The axis perpendicular to the reference plane. x = left/right, y = front/back, z = up/down.",
+          "enum": ["x", "y", "z"]
+        },
+        "offset": {
+          "$ref": "#/$defs/expression",
+          "description": "Distance from the origin along the specified axis. Can be a fixed value or a parameter expression."
+        },
+        "is_reference": {
+          "type": "string",
+          "description": "Optional Revit reference type designation for dimensioning in project views.",
+          "enum": ["Strong", "Weak", "Not a Reference"]
+        }
+      }
+    },
+
+    "parameter": {
+      "type": "object",
+      "description": "A family parameter that can drive dimensions, visibility, or other properties.",
+      "required": ["name", "type", "instance_or_type", "default_value", "group"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human readable parameter name. When referenced in expressions, spaces are replaced with underscores."
+        },
+        "type": {
+          "type": "string",
+          "description": "The data type of the parameter.",
+          "enum": [
+            "length",
+            "angle",
+            "number",
+            "integer",
+            "yes_no",
+            "text",
+            "material"
+          ]
+        },
+        "instance_or_type": {
+          "type": "string",
+          "description": "Whether the parameter varies per instance or is shared across all instances of a type.",
+          "enum": ["instance", "type"]
+        },
+        "default_value": {
+          "description": "The default value for the parameter in the specified units. Must match the parameter type: number for length/angle/number/integer, boolean for yes_no, string for text.",
+          "oneOf": [
+            { "type": "number" },
+            { "type": "boolean" },
+            { "type": "string" }
+          ]
+        },
+        "group": {
+          "type": "string",
+          "description": "The parameter group for organizing in the Revit properties palette.",
+          "enum": [
+            "Dimensions",
+            "Construction",
+            "Identity Data",
+            "Graphics",
+            "Materials and Finishes",
+            "Other"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional tooltip description for the parameter."
+        }
+      }
+    },
+
+    "point_2d": {
+      "type": "object",
+      "description": "A 2D point on a sketch plane using u/v coordinates. u and v map to different 3D axes depending on the sketch plane orientation.",
+      "required": ["u", "v"],
+      "additionalProperties": false,
+      "properties": {
+        "u": {
+          "$ref": "#/$defs/expression",
+          "description": "Horizontal position on the sketch plane."
+        },
+        "v": {
+          "$ref": "#/$defs/expression",
+          "description": "Vertical position on the sketch plane."
+        }
+      }
+    },
+
+    "point_3d": {
+      "type": "object",
+      "description": "A 3D point in family coordinate space.",
+      "required": ["x", "y", "z"],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "$ref": "#/$defs/expression",
+          "description": "Position along the x axis (left/right)."
+        },
+        "y": {
+          "$ref": "#/$defs/expression",
+          "description": "Position along the y axis (front/back)."
+        },
+        "z": {
+          "$ref": "#/$defs/expression",
+          "description": "Position along the z axis (up/down)."
+        }
+      }
+    },
+
+    "profile": {
+      "description": "The 2D cross section shape for an extrusion. Can be a predefined primitive or a custom point based outline.",
+      "oneOf": [
+        { "$ref": "#/$defs/profile_rectangle" },
+        { "$ref": "#/$defs/profile_circle" },
+        { "$ref": "#/$defs/profile_l_shape" },
+        { "$ref": "#/$defs/profile_custom" }
+      ]
+    },
+
+    "profile_rectangle": {
+      "type": "object",
+      "description": "A rectangular profile defined by an origin corner, width, and height.",
+      "required": ["shape", "origin", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "shape": { "const": "rectangle" },
+        "origin": {
+          "$ref": "#/$defs/point_2d",
+          "description": "The bottom left corner of the rectangle on the sketch plane."
+        },
+        "width": {
+          "$ref": "#/$defs/expression",
+          "description": "Horizontal extent of the rectangle along the u axis."
+        },
+        "height": {
+          "$ref": "#/$defs/expression",
+          "description": "Vertical extent of the rectangle along the v axis."
+        }
+      }
+    },
+
+    "profile_circle": {
+      "type": "object",
+      "description": "A circular profile defined by a center point and radius.",
+      "required": ["shape", "center", "radius"],
+      "additionalProperties": false,
+      "properties": {
+        "shape": { "const": "circle" },
+        "center": {
+          "$ref": "#/$defs/point_2d",
+          "description": "The center of the circle on the sketch plane."
+        },
+        "radius": {
+          "$ref": "#/$defs/expression",
+          "description": "The radius of the circle."
+        }
+      }
+    },
+
+    "profile_l_shape": {
+      "type": "object",
+      "description": "An L shaped profile defined by overall dimensions and leg thicknesses. Origin is at the outer bottom left corner.",
+      "required": ["shape", "origin", "overall_width", "overall_height", "horizontal_leg_thickness", "vertical_leg_thickness"],
+      "additionalProperties": false,
+      "properties": {
+        "shape": { "const": "l_shape" },
+        "origin": {
+          "$ref": "#/$defs/point_2d",
+          "description": "The outer bottom left corner of the L shape."
+        },
+        "overall_width": {
+          "$ref": "#/$defs/expression",
+          "description": "Total width of the L shape along the u axis."
+        },
+        "overall_height": {
+          "$ref": "#/$defs/expression",
+          "description": "Total height of the L shape along the v axis."
+        },
+        "horizontal_leg_thickness": {
+          "$ref": "#/$defs/expression",
+          "description": "Thickness of the horizontal (bottom) leg."
+        },
+        "vertical_leg_thickness": {
+          "$ref": "#/$defs/expression",
+          "description": "Thickness of the vertical (left) leg."
+        }
+      }
+    },
+
+    "profile_custom": {
+      "type": "object",
+      "description": "A custom profile defined by an ordered list of vertices forming a closed polygon. Vertices are connected in order, with the last vertex connecting back to the first.",
+      "required": ["shape", "vertices"],
+      "additionalProperties": false,
+      "properties": {
+        "shape": { "const": "custom" },
+        "vertices": {
+          "type": "array",
+          "description": "Ordered list of 2D points forming the profile outline. Minimum 3 points for a valid polygon.",
+          "minItems": 3,
+          "items": {
+            "$ref": "#/$defs/point_2d"
+          }
+        }
+      }
+    },
+
+    "geometry_element": {
+      "description": "A single solid or void geometry element. The type field determines which creation method is used.",
+      "oneOf": [
+        { "$ref": "#/$defs/geometry_extrusion" },
+        { "$ref": "#/$defs/geometry_sweep" },
+        { "$ref": "#/$defs/geometry_blend" }
+      ]
+    },
+
+    "geometry_base_properties": {
+      "description": "Properties shared by all geometry element types.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human readable name for this geometry element."
+        },
+        "subcategory": {
+          "type": "string",
+          "description": "Optional subcategory assignment. Must match one of the values in the top level subcategories array."
+        },
+        "is_void": {
+          "type": "boolean",
+          "description": "If true, this geometry cuts away material (void). If false, it adds material (solid)."
+        }
+      }
+    },
+
+    "geometry_extrusion": {
+      "type": "object",
+      "description": "A solid or void created by extruding a 2D profile perpendicular to a sketch plane.",
+      "required": ["name", "type", "is_void", "sketch_plane", "profile", "extrusion_start", "extrusion_end"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human readable name for this geometry element."
+        },
+        "subcategory": {
+          "type": "string",
+          "description": "Optional subcategory assignment. Must match one of the values in the top level subcategories array."
+        },
+        "type": {
+          "const": "extrusion"
+        },
+        "is_void": {
+          "type": "boolean",
+          "description": "If true, this geometry cuts away material (void). If false, it adds material (solid)."
+        },
+        "sketch_plane": {
+          "type": "string",
+          "description": "The name of the reference plane on which the profile is sketched. Must match a name in the reference_planes array."
+        },
+        "profile": {
+          "$ref": "#/$defs/profile",
+          "description": "The 2D cross section shape to be extruded."
+        },
+        "extrusion_start": {
+          "$ref": "#/$defs/expression",
+          "description": "Start offset of the extrusion from the sketch plane, measured perpendicular to the plane."
+        },
+        "extrusion_end": {
+          "$ref": "#/$defs/expression",
+          "description": "End offset of the extrusion from the sketch plane, measured perpendicular to the plane."
+        }
+      }
+    },
+
+    "geometry_sweep": {
+      "type": "object",
+      "description": "A solid or void created by sweeping a 2D profile along a 2D or 3D path. The profile is perpendicular to the path at every point.",
+      "required": ["name", "type", "is_void", "sketch_plane", "profile", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human readable name for this geometry element."
+        },
+        "subcategory": {
+          "type": "string",
+          "description": "Optional subcategory assignment. Must match one of the values in the top level subcategories array."
+        },
+        "type": {
+          "const": "sweep"
+        },
+        "is_void": {
+          "type": "boolean",
+          "description": "If true, this geometry cuts away material (void). If false, it adds material (solid)."
+        },
+        "sketch_plane": {
+          "type": "string",
+          "description": "The name of the reference plane on which the sweep path is drawn. Must match a name in the reference_planes array."
+        },
+        "profile": {
+          "$ref": "#/$defs/profile",
+          "description": "The 2D cross section shape that is swept along the path."
+        },
+        "path": {
+          "$ref": "#/$defs/sweep_path",
+          "description": "The path along which the profile is swept."
+        }
+      }
+    },
+
+    "sweep_path": {
+      "description": "A path for a sweep operation, defined as an ordered series of segments.",
+      "type": "object",
+      "required": ["segments"],
+      "additionalProperties": false,
+      "properties": {
+        "segments": {
+          "type": "array",
+          "description": "Ordered list of path segments. Segments must connect end to end (the end point of one segment is the start point of the next).",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/path_segment"
+          }
+        }
+      }
+    },
+
+    "path_segment": {
+      "description": "A single segment of a sweep path.",
+      "oneOf": [
+        { "$ref": "#/$defs/path_segment_line" },
+        { "$ref": "#/$defs/path_segment_arc" }
+      ]
+    },
+
+    "path_segment_line": {
+      "type": "object",
+      "description": "A straight line segment between two points on the sketch plane.",
+      "required": ["segment_type", "start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "segment_type": { "const": "line" },
+        "start": {
+          "$ref": "#/$defs/point_2d",
+          "description": "Start point of the line segment."
+        },
+        "end": {
+          "$ref": "#/$defs/point_2d",
+          "description": "End point of the line segment."
+        }
+      }
+    },
+
+    "path_segment_arc": {
+      "type": "object",
+      "description": "A circular arc segment defined by start point, end point, and a bulge factor or center point.",
+      "required": ["segment_type", "start", "end", "center"],
+      "additionalProperties": false,
+      "properties": {
+        "segment_type": { "const": "arc" },
+        "start": {
+          "$ref": "#/$defs/point_2d",
+          "description": "Start point of the arc."
+        },
+        "end": {
+          "$ref": "#/$defs/point_2d",
+          "description": "End point of the arc."
+        },
+        "center": {
+          "$ref": "#/$defs/point_2d",
+          "description": "Center point of the arc's defining circle."
+        }
+      }
+    },
+
+    "geometry_blend": {
+      "type": "object",
+      "description": "A solid or void created by transitioning between two 2D profiles (top and bottom) along a perpendicular axis. Similar to a loft between two cross sections.",
+      "required": ["name", "type", "is_void", "sketch_plane", "bottom_profile", "top_profile", "bottom_offset", "top_offset"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human readable name for this geometry element."
+        },
+        "subcategory": {
+          "type": "string",
+          "description": "Optional subcategory assignment. Must match one of the values in the top level subcategories array."
+        },
+        "type": {
+          "const": "blend"
+        },
+        "is_void": {
+          "type": "boolean",
+          "description": "If true, this geometry cuts away material (void). If false, it adds material (solid)."
+        },
+        "sketch_plane": {
+          "type": "string",
+          "description": "The name of the reference plane where the bottom profile is located. Must match a name in the reference_planes array."
+        },
+        "bottom_profile": {
+          "$ref": "#/$defs/profile",
+          "description": "The 2D cross section shape at the bottom (start) of the blend."
+        },
+        "top_profile": {
+          "$ref": "#/$defs/profile",
+          "description": "The 2D cross section shape at the top (end) of the blend. Must have the same number of vertices/segments as the bottom profile for proper vertex mapping."
+        },
+        "bottom_offset": {
+          "$ref": "#/$defs/expression",
+          "description": "Offset of the bottom profile from the sketch plane, measured perpendicular to the plane."
+        },
+        "top_offset": {
+          "$ref": "#/$defs/expression",
+          "description": "Offset of the top profile from the sketch plane, measured perpendicular to the plane."
+        }
+      }
+    },
+
+    "constraint": {
+      "type": "object",
+      "description": "A relationship that locks a geometry element to a reference plane.",
+      "required": ["description", "type", "geometry", "reference_plane"],
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Human readable explanation of what this constraint does."
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of constraint relationship.",
+          "enum": ["alignment", "lock", "equality"]
+        },
+        "geometry": {
+          "type": "string",
+          "description": "Name of the geometry element being constrained. Must match a name in the geometry array."
+        },
+        "reference_plane": {
+          "type": "string",
+          "description": "Name of the reference plane to constrain to. Must match a name in the reference_planes array."
+        }
+      }
+    }
+  }
+}

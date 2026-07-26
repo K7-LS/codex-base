@@ -1,0 +1,33 @@
+{
+  "memory": [
+    "memory/sessions_policy.md",
+    "memory/harvest_workflow.md",
+    "memory/harvest_proactive.md",
+    "memory/auto_sync.md",
+    "memory/role_detection.md",
+    "memory/proxy_github.md",
+    "memory/reference_mcp.md",
+    "memory/reference_agents.md",
+    "memory/auto_memory_policy.md",
+    "memory/context_discipline.md",
+    "memory/profanity_marker.md",
+    "memory/feedback_web_direct_access.md",
+    "memory/feedback_webfetch_reality_check.md",
+    "memory/named_chains.md",
+    "memory/reference_pyrevit.md",
+    "memory/reference_revit_mcp.md",
+    "memory/reference_docx_editing_failures.md",
+    "memory/reference_hybrid_ai_pipeline.md",
+    "memory/reference_inkscape_pdf_editing.md"
+  ],
+  "chains": [
+    "chains/docx-from-template.md",
+    "chains/pdf-scan-extract.md",
+    "chains/upd-to-spec-reconcile.md"
+  ],
+  "commands": [
+    "commands/format.md",
+    "commands/harvest.md",
+    "commands/sync-base.md"
+  ]
+}

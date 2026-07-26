@@ -1,0 +1,330 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import shutil
+import zipfile
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
+
+
+SUPPORTED_CODEX_CLIENT = "0.146.0-alpha.3.1"
+SOURCE_REPOSITORY = "https://github.com/daniileliseev1337/claude-base"
+FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
+
+
+@dataclass(frozen=True)
+class ReleaseBuild:
+    zip_path: Path
+    manifest_path: Path
+    component_lock_path: Path
+    manifest: dict[str, object]
+
+
+def _sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _json_bytes(value: object) -> bytes:
+    return (
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def _tree_files(root: Path) -> list[Path]:
+    return sorted(
+        (
+            path
+            for path in root.rglob("*")
+            if path.is_file()
+            and "tests" not in path.parts
+            and "__pycache__" not in path.parts
+            and path.suffix.lower() not in {".pyc", ".pyo"}
+        ),
+        key=lambda path: path.relative_to(root).as_posix(),
+    )
+
+
+def _component_record(
+    repo_root: Path,
+    component_id: str,
+    files: list[Path],
+    source: dict[str, str],
+) -> dict[str, object]:
+    rows: list[dict[str, object]] = []
+    digest = hashlib.sha256()
+    for path in files:
+        relative = path.relative_to(repo_root).as_posix()
+        file_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        rows.append(
+            {
+                "path": relative,
+                "sha256": file_hash,
+                "bytes": path.stat().st_size,
+            }
+        )
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(file_hash.encode("ascii"))
+        digest.update(b"\n")
+    return {
+        "id": component_id,
+        "source": source,
+        "sha256": digest.hexdigest(),
+        "files": rows,
+    }
+
+
+def build_component_lock(repo_root: Path, version: str) -> dict[str, object]:
+    migration = json.loads(
+        (repo_root / "MIGRATION-SOURCE.json").read_text(encoding="utf-8")
+    )
+    source = {
+        "repository": str(migration["source"]["repository"]),
+        "commit": str(migration["source"]["commit"]),
+        "tree": str(migration["source"]["tree"]),
+    }
+    agents_catalog = json.loads(
+        (repo_root / "catalog" / "agents.json").read_text(encoding="utf-8")
+    )
+    skills_catalog = json.loads(
+        (repo_root / "catalog" / "skills.json").read_text(encoding="utf-8")
+    )
+    cold_catalog = json.loads(
+        (repo_root / "catalog" / "cold.json").read_text(encoding="utf-8")
+    )
+
+    agents = [
+        _component_record(
+            repo_root,
+            str(item["id"]),
+            [repo_root / str(item["source"])],
+            source,
+        )
+        for item in agents_catalog
+    ]
+    skills = [
+        _component_record(
+            repo_root,
+            str(item["id"]),
+            _tree_files(repo_root / "skills" / str(item["id"])),
+            source,
+        )
+        for item in skills_catalog
+    ]
+    cold_values = [
+        value
+        for group in ("memory", "chains", "commands")
+        for value in cold_catalog[group]
+    ]
+    cold = [
+        _component_record(
+            repo_root,
+            value,
+            [repo_root / "cold" / value],
+            source,
+        )
+        for value in cold_values
+    ]
+    return {
+        "schema_version": 1,
+        "target": "codex",
+        "version": version,
+        "source": source,
+        "components": {
+            "agents": agents,
+            "skills": skills,
+            "cold": cold,
+        },
+    }
+
+
+def _add_tree(
+    entries: dict[str, bytes],
+    source_root: Path,
+    destination_root: str,
+) -> None:
+    for path in _tree_files(source_root):
+        relative = path.relative_to(source_root).as_posix()
+        destination = str(PurePosixPath(destination_root) / relative)
+        entries[destination] = path.read_bytes()
+
+
+def _validate_foundation(foundation_root: Path) -> str:
+    required = (
+        foundation_root / "VERSION",
+        foundation_root / "foundation.ps1",
+        foundation_root / "engine-manifest.json",
+    )
+    if not all(path.is_file() for path in required):
+        raise ValueError("Foundation engine is missing required accepted files")
+    version = (foundation_root / "VERSION").read_text(encoding="utf-8").strip()
+    manifest = json.loads(
+        (foundation_root / "engine-manifest.json").read_text(encoding="utf-8")
+    )
+    if manifest.get("engine_version") != version:
+        raise ValueError("Foundation engine version and manifest disagree")
+    if manifest.get("network") != "offline":
+        raise ValueError("Foundation engine is not declared offline")
+    if manifest.get("commands") != [
+        "doctor",
+        "install",
+        "inventory",
+        "plan",
+        "rollback",
+    ]:
+        raise ValueError("Foundation engine command contract differs")
+    if manifest.get("supported_powershell") != ["5.1", "7"]:
+        raise ValueError("Foundation PowerShell contract differs")
+    script_hash = _sha256_bytes(
+        (foundation_root / "foundation.ps1").read_bytes()
+    )
+    if manifest.get("foundation_ps1_sha256") != script_hash:
+        raise ValueError("Foundation engine SHA-256 mismatch")
+    return version
+
+
+def _write_zip(path: Path, entries: dict[str, bytes]) -> None:
+    with zipfile.ZipFile(
+        path,
+        mode="w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=9,
+    ) as archive:
+        for name in sorted(entries):
+            info = zipfile.ZipInfo(name, FIXED_ZIP_TIME)
+            info.create_system = 3
+            info.external_attr = 0o100644 << 16
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, entries[name], compress_type=zipfile.ZIP_DEFLATED)
+
+
+def build_release(
+    repo_root: Path,
+    dist_root: Path,
+    version: str,
+    foundation_root: Path,
+) -> ReleaseBuild:
+    foundation_version = _validate_foundation(foundation_root)
+    dist_root.mkdir(parents=True, exist_ok=True)
+
+    component_lock = build_component_lock(repo_root, version)
+    entries: dict[str, bytes] = {
+        ".codex/AGENTS.md": (repo_root / "AGENTS.md").read_bytes(),
+        ".codex/config.toml": (repo_root / "runtime" / "config.toml").read_bytes(),
+        ".codex/hooks.json": (repo_root / "runtime" / "hooks.json").read_bytes(),
+        ".codex/base/VERSION": (version + "\n").encode("utf-8"),
+        ".codex/base/components.lock.json": _json_bytes(component_lock),
+    }
+    _add_tree(entries, repo_root / "agents", ".codex/agents")
+    _add_tree(entries, repo_root / "skills", ".agents/skills")
+    _add_tree(entries, repo_root / "control-skills", ".agents/skills")
+    _add_tree(entries, repo_root / "cold", ".codex/base/cold")
+    _add_tree(entries, repo_root / "runtime" / "hooks", ".codex/base/runtime/hooks")
+    _add_tree(
+        entries,
+        foundation_root,
+        f".codex/base/foundation/{foundation_version}",
+    )
+
+    package_files = [
+        {
+            "path": name,
+            "sha256": _sha256_bytes(payload),
+            "bytes": len(payload),
+        }
+        for name, payload in sorted(entries.items())
+    ]
+    package_manifest = {
+        "schema_version": 1,
+        "target": "codex",
+        "version": version,
+        "client": {
+            "id": "codex-cli",
+            "supported_version": SUPPORTED_CODEX_CLIENT,
+        },
+        "foundation_engine_version": foundation_version,
+        "managed_surface": {
+            "exact_directories": [
+                ".agents/skills",
+                ".codex/agents",
+                ".codex/base/cold",
+                ".codex/base/foundation",
+                ".codex/base/runtime",
+            ],
+            "replace_files": [
+                ".codex/AGENTS.md",
+                ".codex/base/VERSION",
+                ".codex/base/components.lock.json",
+                ".codex/config.toml",
+                ".codex/hooks.json",
+            ],
+            "preserved_paths": [
+                ".codex/archived_sessions",
+                ".codex/auth.json",
+                ".codex/browser",
+                ".codex/computer-use",
+                ".codex/imports",
+                ".codex/memories",
+                ".codex/sessions",
+                ".codex/state",
+                ".codex/state.sqlite",
+            ],
+        },
+        "sync_policy": {
+            "direction": "hub-to-consumer",
+            "consumer_feedback_upload": False,
+            "consumer_push": False,
+            "consumer_session_upload": False,
+            "credentials_included": False,
+        },
+        "files": package_files,
+    }
+    package_manifest_bytes = _json_bytes(package_manifest)
+    entries["package-manifest.json"] = package_manifest_bytes
+
+    zip_path = dist_root / f"codex-base-{version}.zip"
+    _write_zip(zip_path, entries)
+    zip_payload = zip_path.read_bytes()
+    release_manifest = {
+        "schema_version": 1,
+        "target": "codex",
+        "version": version,
+        "tag": f"codex-v{version}",
+        "channel": "candidate",
+        "supported_codex_client": SUPPORTED_CODEX_CLIENT,
+        "foundation_engine_version": foundation_version,
+        "asset": {
+            "name": zip_path.name,
+            "sha256": _sha256_bytes(zip_payload),
+            "bytes": len(zip_payload),
+        },
+        "package_manifest_sha256": _sha256_bytes(package_manifest_bytes),
+        "requires": {
+            "immutable_release": True,
+            "release_attestation": True,
+            "verification_commands": [
+                f"gh release verify codex-v{version} -R daniileliseev1337/codex-base",
+                (
+                    f"gh release verify-asset codex-v{version} "
+                    f"{zip_path.name} -R daniileliseev1337/codex-base"
+                ),
+            ],
+        },
+    }
+    manifest_path = dist_root / "release-manifest.json"
+    lock_path = dist_root / "components.lock.json"
+    manifest_path.write_bytes(_json_bytes(release_manifest))
+    lock_path.write_bytes(_json_bytes(component_lock))
+    return ReleaseBuild(
+        zip_path=zip_path,
+        manifest_path=manifest_path,
+        component_lock_path=lock_path,
+        manifest=release_manifest,
+    )

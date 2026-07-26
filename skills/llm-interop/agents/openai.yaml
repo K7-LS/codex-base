@@ -1,0 +1,4 @@
+interface:
+  display_name: "LLM Interop"
+  short_description: "Передача задач между Claude, Codex и другими LLM"
+  default_prompt: "Use $llm-interop to delegate this task to a partner model with a verifiable result contract."

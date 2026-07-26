@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-07-26",
+  "source": "read-only current hub surfaces",
+  "method": "UTF-8 bytes for global AGENTS.md plus canonical name|description|installed-path discovery rows; token estimate is ceil(bytes/3)",
+  "surfaces": {
+    "hot": {
+      "logical_path": "~/.codex/AGENTS.md",
+      "bytes": 19409,
+      "sha256": "60966a9e6930c62151b0badf1a4c2a011f9e2caec4c69f02c7b0277df14354c7"
+    },
+    "skills_discovery": {
+      "logical_root": "~/.agents/skills",
+      "count": 45,
+      "bytes": 9243,
+      "sha256": "7d65911c3d9624d1be1af2a48f119a15392695c04cea8ea76de9c3ea6ea4f847"
+    },
+    "agents_discovery": {
+      "logical_root": "~/.codex/agents",
+      "count": 16,
+      "bytes": 43425,
+      "sha256": "f2382ece0a6318106bed968e4fcb577d2469a61b9aa21587719672d6c17e15b2"
+    }
+  },
+  "total_bytes": 72077,
+  "estimated_tokens": 24026
+}

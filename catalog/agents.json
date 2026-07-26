@@ -1,0 +1,130 @@
+[
+  {
+    "id": "audit-rd-section",
+    "name": "audit-rd-section",
+    "description": "Проверяет один раздел ПД/РД на соответствие ГОСТ, СПДС и профильным нормам.",
+    "source": "agents/audit-rd-section.toml",
+    "permission_class": "ro",
+    "required_capabilities": ["core.files.read"]
+  },
+  {
+    "id": "auditor",
+    "name": "auditor",
+    "description": "Независимо сверяет итоговый артефакт с ТЗ и источниками, включая количества, модели и ссылки.",
+    "source": "agents/auditor.toml",
+    "permission_class": "ro",
+    "required_capabilities": ["core.files.read"]
+  },
+  {
+    "id": "designer",
+    "name": "designer",
+    "description": "Проектирует ОВ, ВК, ЭО и СС, выполняет инженерные расчёты и подбор оборудования.",
+    "source": "agents/designer.toml",
+    "permission_class": "rw",
+    "required_capabilities": ["core.files.read", "core.files.write"]
+  },
+  {
+    "id": "excel-validator",
+    "name": "excel-validator",
+    "description": "Read-only проверка XLSX: формулы, типы, дубли, диапазоны и целостность таблицы.",
+    "source": "agents/excel-validator.toml",
+    "permission_class": "ro",
+    "required_capabilities": ["spreadsheet.read"]
+  },
+  {
+    "id": "expertiza-responder",
+    "name": "expertiza-responder",
+    "description": "Готовит структурированные ответы на замечания государственной или негосударственной экспертизы.",
+    "source": "agents/expertiza-responder.toml",
+    "permission_class": "rw",
+    "required_capabilities": ["core.files.read", "document.word.write"]
+  },
+  {
+    "id": "id-engineer",
+    "name": "id-engineer",
+    "description": "Оформляет исполнительную документацию, акты, журналы и реестры по факту выполненных работ.",
+    "source": "agents/id-engineer.toml",
+    "permission_class": "rw",
+    "required_capabilities": ["core.files.read", "document.word.write"]
+  },
+  {
+    "id": "kp-writer",
+    "name": "kp-writer",
+    "description": "Собирает исходящее коммерческое предложение заказчику из ТЗ, объёмов, цен и условий.",
+    "source": "agents/kp-writer.toml",
+    "permission_class": "rw",
+    "required_capabilities": ["core.files.read", "document.word.write"]
+  },
+  {
+    "id": "letter-writer",
+    "name": "letter-writer",
+    "description": "Готовит исходящие деловые письма, запросы, уведомления, претензии и сопроводительные.",
+    "source": "agents/letter-writer.toml",
+    "permission_class": "rw",
+    "required_capabilities": ["core.files.read", "document.word.write"]
+  },
+  {
+    "id": "norm-lookup",
+    "name": "norm-lookup",
+    "description": "Находит точный пункт, редакцию и дословную короткую цитату нормативного документа.",
+    "source": "agents/norm-lookup.toml",
+    "permission_class": "ro",
+    "required_capabilities": ["core.files.read", "web.search"]
+  },
+  {
+    "id": "pdf-reviewer",
+    "name": "pdf-reviewer",
+    "description": "Read-only проверка PDF как файла: структура, страницы, формы, ссылки, шрифты и аннотации.",
+    "source": "agents/pdf-reviewer.toml",
+    "permission_class": "ro",
+    "required_capabilities": ["pdf.read", "pdf.render"]
+  },
+  {
+    "id": "pto-engineer",
+    "name": "pto-engineer",
+    "description": "Считает объёмы по готовым чертежам и формирует ВОР, спецификации и пояснительные записки.",
+    "source": "agents/pto-engineer.toml",
+    "permission_class": "rw",
+    "required_capabilities": ["core.files.read", "spreadsheet.write"]
+  },
+  {
+    "id": "pyrevit-engineer",
+    "name": "pyrevit-engineer",
+    "description": "Пишет и проверяет pyRevit-инструменты на IronPython и Revit API с обязательным live-gate.",
+    "source": "agents/pyrevit-engineer.toml",
+    "permission_class": "rw",
+    "required_capabilities": ["core.files.read", "core.files.write", "revit.inspect"]
+  },
+  {
+    "id": "rd-coordinator",
+    "name": "rd-coordinator",
+    "description": "Read-only сверяет согласованность данных между разделами АР, КР, ОВ, ВК, ЭО и СС.",
+    "source": "agents/rd-coordinator.toml",
+    "permission_class": "ro",
+    "required_capabilities": ["core.files.read"]
+  },
+  {
+    "id": "smetchik",
+    "name": "сметчик",
+    "description": "Составляет локальные сметы, подбирает расценки, индексы, НР, СП, НДС, КС-2 и КС-3.",
+    "source": "agents/smetchik.toml",
+    "permission_class": "rw",
+    "required_capabilities": ["core.files.read", "spreadsheet.write"]
+  },
+  {
+    "id": "snabzhenets",
+    "name": "снабженец",
+    "description": "Разбирает УПД и входящие КП, сравнивает поставщиков и формирует закупочные заявки.",
+    "source": "agents/snabzhenets.toml",
+    "permission_class": "rw",
+    "required_capabilities": ["core.files.read", "spreadsheet.write"]
+  },
+  {
+    "id": "word-checker",
+    "name": "word-checker",
+    "description": "Read-only проверка DOCX: структура, стили, таблицы, изображения и незаполненные шаблоны.",
+    "source": "agents/word-checker.toml",
+    "permission_class": "ro",
+    "required_capabilities": ["document.word.read"]
+  }
+]

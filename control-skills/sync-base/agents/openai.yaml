@@ -1,0 +1,7 @@
+interface:
+  display_name: "Sync Codex base"
+  short_description: "Verify and install a stable one-way Codex-base release."
+  default_prompt: "Verify and install the latest stable Codex-base release."
+
+policy:
+  allow_implicit_invocation: false

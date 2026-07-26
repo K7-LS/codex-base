@@ -1,0 +1,255 @@
+{
+  "metadata": {
+    "description": "Base cabinet with one drawer on top and a single door below. Includes side panels, bottom shelf, back panel, and toe kick cutout.",
+    "schema_version": "0.1",
+    "category": "Casework",
+    "prompt": "Create a base cabinet, 24 inches wide, 36 inches tall, 24 inches deep, with one drawer on top and a single door below"
+  },
+
+  "units": "inches",
+
+  "subcategories": [
+    "Carcass",
+    "Doors",
+    "Drawers"
+  ],
+
+  "reference_planes": [
+    {
+      "name": "Left",
+      "direction": "x",
+      "offset": "-Width / 2"
+    },
+    {
+      "name": "Right",
+      "direction": "x",
+      "offset": "Width / 2"
+    },
+    {
+      "name": "Front",
+      "direction": "y",
+      "offset": 0
+    },
+    {
+      "name": "Back",
+      "direction": "y",
+      "offset": "Depth"
+    },
+    {
+      "name": "Top",
+      "direction": "z",
+      "offset": "Height"
+    },
+    {
+      "name": "Bottom",
+      "direction": "z",
+      "offset": 0
+    },
+    {
+      "name": "Toe Kick Top",
+      "direction": "z",
+      "offset": "Toe_Kick_Height"
+    },
+    {
+      "name": "Drawer Bottom",
+      "direction": "z",
+      "offset": "Height - Drawer_Height"
+    }
+  ],
+
+  "parameters": [
+    {
+      "name": "Width",
+      "type": "length",
+      "instance_or_type": "instance",
+      "default_value": 24,
+      "group": "Dimensions"
+    },
+    {
+      "name": "Height",
+      "type": "length",
+      "instance_or_type": "instance",
+      "default_value": 36,
+      "group": "Dimensions"
+    },
+    {
+      "name": "Depth",
+      "type": "length",
+      "instance_or_type": "instance",
+      "default_value": 24,
+      "group": "Dimensions"
+    },
+    {
+      "name": "Material Thickness",
+      "type": "length",
+      "instance_or_type": "type",
+      "default_value": 0.75,
+      "group": "Construction"
+    },
+    {
+      "name": "Drawer Height",
+      "type": "length",
+      "instance_or_type": "instance",
+      "default_value": 6,
+      "group": "Dimensions"
+    },
+    {
+      "name": "Toe Kick Height",
+      "type": "length",
+      "instance_or_type": "type",
+      "default_value": 4,
+      "group": "Dimensions"
+    },
+    {
+      "name": "Toe Kick Setback",
+      "type": "length",
+      "instance_or_type": "type",
+      "default_value": 3,
+      "group": "Dimensions"
+    },
+    {
+      "name": "Door Gap",
+      "type": "length",
+      "instance_or_type": "type",
+      "default_value": 0.0625,
+      "group": "Construction"
+    }
+  ],
+
+  "geometry": [
+    {
+      "name": "Left Side Panel",
+      "subcategory": "Carcass",
+      "type": "extrusion",
+      "is_void": false,
+      "sketch_plane": "Left",
+      "profile": {
+        "shape": "rectangle",
+        "origin": { "u": 0, "v": "Toe_Kick_Height" },
+        "width": "Depth",
+        "height": "Height - Toe_Kick_Height"
+      },
+      "extrusion_start": 0,
+      "extrusion_end": "Material_Thickness"
+    },
+    {
+      "name": "Right Side Panel",
+      "subcategory": "Carcass",
+      "type": "extrusion",
+      "is_void": false,
+      "sketch_plane": "Right",
+      "profile": {
+        "shape": "rectangle",
+        "origin": { "u": 0, "v": "Toe_Kick_Height" },
+        "width": "Depth",
+        "height": "Height - Toe_Kick_Height"
+      },
+      "extrusion_start": "-Material_Thickness",
+      "extrusion_end": 0
+    },
+    {
+      "name": "Bottom Shelf",
+      "subcategory": "Carcass",
+      "type": "extrusion",
+      "is_void": false,
+      "sketch_plane": "Toe Kick Top",
+      "profile": {
+        "shape": "rectangle",
+        "origin": { "u": "-Width / 2 + Material_Thickness", "v": 0 },
+        "width": "Width - 2 * Material_Thickness",
+        "height": "Depth"
+      },
+      "extrusion_start": 0,
+      "extrusion_end": "Material_Thickness"
+    },
+    {
+      "name": "Back Panel",
+      "subcategory": "Carcass",
+      "type": "extrusion",
+      "is_void": false,
+      "sketch_plane": "Back",
+      "profile": {
+        "shape": "rectangle",
+        "origin": { "u": "-Width / 2 + Material_Thickness", "v": "Toe_Kick_Height + Material_Thickness" },
+        "width": "Width - 2 * Material_Thickness",
+        "height": "Height - Toe_Kick_Height - Material_Thickness"
+      },
+      "extrusion_start": "-Material_Thickness",
+      "extrusion_end": 0
+    },
+    {
+      "name": "Drawer Front",
+      "subcategory": "Drawers",
+      "type": "extrusion",
+      "is_void": false,
+      "sketch_plane": "Front",
+      "profile": {
+        "shape": "rectangle",
+        "origin": { "u": "-Width / 2 + Door_Gap", "v": "Height - Drawer_Height + Door_Gap" },
+        "width": "Width - 2 * Door_Gap",
+        "height": "Drawer_Height - 2 * Door_Gap"
+      },
+      "extrusion_start": "-Material_Thickness",
+      "extrusion_end": 0
+    },
+    {
+      "name": "Door",
+      "subcategory": "Doors",
+      "type": "extrusion",
+      "is_void": false,
+      "sketch_plane": "Front",
+      "profile": {
+        "shape": "rectangle",
+        "origin": { "u": "-Width / 2 + Door_Gap", "v": "Toe_Kick_Height + Door_Gap" },
+        "width": "Width - 2 * Door_Gap",
+        "height": "Height - Drawer_Height - Toe_Kick_Height - 2 * Door_Gap"
+      },
+      "extrusion_start": "-Material_Thickness",
+      "extrusion_end": 0
+    },
+    {
+      "name": "Toe Kick Void",
+      "subcategory": "Carcass",
+      "type": "extrusion",
+      "is_void": true,
+      "sketch_plane": "Front",
+      "profile": {
+        "shape": "rectangle",
+        "origin": { "u": "-Width / 2 + Toe_Kick_Setback", "v": 0 },
+        "width": "Width - 2 * Toe_Kick_Setback",
+        "height": "Toe_Kick_Height"
+      },
+      "extrusion_start": 0,
+      "extrusion_end": "Depth - Toe_Kick_Setback"
+    }
+  ],
+
+  "constraints": [
+    {
+      "description": "Lock Left Side Panel to Left reference plane",
+      "type": "alignment",
+      "geometry": "Left Side Panel",
+      "reference_plane": "Left"
+    },
+    {
+      "description": "Lock Right Side Panel to Right reference plane",
+      "type": "alignment",
+      "geometry": "Right Side Panel",
+      "reference_plane": "Right"
+    },
+    {
+      "description": "Lock Bottom Shelf to Toe Kick Top reference plane",
+      "type": "alignment",
+      "geometry": "Bottom Shelf",
+      "reference_plane": "Toe Kick Top"
+    }
+  ],
+
+  "_TODO": [
+    "Add material assignments (material parameter per geometry element)",
+    "Add hardware (knobs/pulls) as nested family references",
+    "Add hinges and drawer slides as connector points",
+    "Support type catalog generation",
+    "Add visibility parameters for controlling element display"
+  ]
+}

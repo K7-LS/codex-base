@@ -1,0 +1,41 @@
+{
+  "title": "Что я понял: каналы для виджетов и куда движемся",
+  "goal": "Сделать так, чтобы наши виджеты были видны <b>там, где работаем</b> — в окне Codex и как HTML-файл. Карта понимания = зеркало того, что я понял, сверяем его <b>до</b> работы.",
+  "eyebrow": ["Каналы виджетов · Codex ↔ инженер", "Скилл understanding-map · сборка"],
+  "okTitle": "Что понято",
+  "asTitle": "Допущения · проверь",
+  "peTitle": "Пробелы · решаем",
+  "items": [
+    { "zone": "ok", "tag": "Р1 · решено", "title": "Канал найден — show_widget", "detail": "Встроенный visualize рендерит виджеты прямо в окне Codex (вкладка Code в Desktop). Без сервера, портов и туннелей." },
+    { "zone": "ok", "tag": "Р2 · решено", "title": "Телефон отложен", "detail": "Хотелка, не блокер. На телефоне виджет только через remote MCP — доделаем после главного." },
+    { "zone": "ok", "tag": "Р3 · решено", "title": "VS Code — только HTML-файл", "detail": "show_widget в VS Code-расширении недоступен (нет инструмента, проверено ToolSearch). MCP-app там тоже текст. Остаётся standalone HTML." },
+    { "zone": "ok", "tag": "Р4 · решено", "title": "Два режима — два визуала", "detail": "show_widget = нативные CDS-карточки; standalone = чертёжный лист с миллиметровкой и ГОСТ-штампом. Разные среды — разные ограничения CSS." },
+    { "zone": "ok", "tag": "Р5 · решено", "title": "Оформляем скиллом", "detail": "understanding-map: render_map.py (JSON→HTML, 2 режима) + SKILL.md + пример. Постоянство по триггеру, а не каждый раз с нуля." },
+    { "zone": "as", "tag": "Д1 · допущение", "title": "show_widget = только Desktop", "detail": "Проверено: env entrypoint=Codex-desktop, в VS Code инструмента нет. Что у этого хоста так всегда — держим допущением, не аксиомой." },
+    { "zone": "as", "tag": "Д2 · допущение", "title": "Desktop Chat — другой стек", "detail": "Там Artifacts + MCP-app (understanding-map) уже рендерят; show_widget туда не нужен." },
+    { "zone": "pe", "tag": "В1 · вопрос", "title": "Возврат правок в новом канале", "detail": "show_widget шлёт через sendPrompt (текст в чат). Хватает ли этого vs структурный app.sendMessage в MCP-app — решим по опыту." },
+    { "zone": "pe", "tag": "В2 · вопрос", "title": "Судьба understanding-mcp", "detail": "Сервер остаётся для Desktop Chat и (через remote) телефона. Развивать его или заморозить — открыто." }
+  ],
+  "flowTitle": "Как шёл разбор — честно",
+  "flow": [
+    { "n": "Ш1", "title": "STOP + статус фактом", "detail": "MCP 11/11, agents 16/16; headless-тест сервера understanding-map ✅." },
+    { "n": "Ш2", "title": "Codex-code-guide (selected-model)", "detail": "По докам: Codex не хост MCP Apps; мобайл рендерит виджеты только у remote-коннекторов." },
+    { "n": "Ш3", "title": "Развороты приоритетов", "detail": "Телефон → отложен; главное → виджеты в Code / VS Code / как файл." },
+    { "n": "Ш4", "title": "show_widget — тест в Code", "detail": "Карта отрисовалась карточками прямо в окне — канал подтверждён тобой." },
+    { "n": "Ш5", "title": "Допроверка поверхностей", "detail": "env: ты во вкладке Code в Desktop; в VS Code show_widget нет; матрица каналов сведена." },
+    { "n": "Ш6 · поворот", "turn": true, "title": "Центр тяжести сместился", "detail": "MCP-app был обходным путём для Code; show_widget даёт то же нативно и без сервера." },
+    { "n": "Ш7", "title": "Оформляем скилл", "detail": "render_map.py + SKILL.md + этот пример — текущий шаг." }
+  ],
+  "archTitle": "Архитектура скилла",
+  "arch": [
+    { "ln": "слой 1", "title": "Карта понимания (данные)", "detail": "Codex эмитит JSON: зоны / ход разбора / архитектура / штамп. Единый формат." },
+    { "ln": "слой 2", "title": "Рендер (render_map.py)", "detail": "JSON → HTML детерминированно. Творческое — модель, рендер — код." },
+    { "ln": "слой 3", "title": "Каналы вывода", "detail": "show_widget (Desktop, нативно) + standalone HTML (браузер / VS Code / телефон)." }
+  ],
+  "stamp": [
+    { "k": "Понял", "v": "Codex · selected-model 4.8" },
+    { "k": "Сверяет", "v": "Инженер-проектировщик" },
+    { "k": "Сессия", "v": "2026-06-29" },
+    { "k": "Статус", "v": "Скилл understanding-map в сборке", "soft": true }
+  ]
+}

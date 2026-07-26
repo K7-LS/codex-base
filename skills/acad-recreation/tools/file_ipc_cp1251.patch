@@ -1,0 +1,39 @@
+# ПАТЧ: cp1252 -> cp1251 fallback в autocad-mcp (file_ipc.py)
+#
+# ПРОБЛЕМА (P1 из harvest 2026-06-04): русский AutoCAD пишет result-файлы LISP в
+# Windows-1251, а сервер puran-water fallback'ит на cp1252 -> кракозябры в именах
+# слоёв/блоков ("!Приток" и т.п.). Подтверждено в METADATA сервера и file_ipc.py:168-173.
+#
+# ФИКС: цепочка utf-8 -> cp1251 -> cp1252 (cp1251 первым после utf-8, т.к. наш AutoCAD русский).
+#
+# ПРИМЕНЕНИЕ (на ПК с сервером + AutoCAD):
+#   1. Бэкап:  copy "%USERPROFILE%\.codex/base/mcp-servers\autocad-mcp\src\autocad_mcp\backends\file_ipc.py" file_ipc.py.bak
+#   2. Открыть file_ipc.py, найти блок ~строка 167-173 (try utf-8 / except cp1252).
+#   3. Заменить как ниже (--- было / +++ стало).
+#   4. Перезапустить Codex (сервер перечитает код).
+#   5. ТЕСТ: execute_lisp создаёт слой "!Приток", читаем список слоёв -> имя без кракозябр.
+#
+# ⚠ Если переустановишь сервер через setup-extras — патч затрётся (upstream zip).
+#   Потому держим патч здесь, в Codex-base, + см. cherry_pick_batch.md (вендор-снапшот).
+
+--- src/autocad_mcp/backends/file_ipc.py   (было)
+@@ строка ~167-173 @@
+                     try:
+                         # AutoCAD LISP writes files in Windows-1252 encoding;
+                         # try UTF-8 first (covers ASCII), fall back to cp1252
+                         try:
+                             text = result_file.read_text(encoding="utf-8")
+                         except UnicodeDecodeError:
+                             text = result_file.read_text(encoding="cp1252")
+
++++ src/autocad_mcp/backends/file_ipc.py   (стало)
+                     try:
+                         # Русский AutoCAD пишет result-файлы в Windows-1251.
+                         # Порядок: utf-8 (ASCII) -> cp1251 (рус) -> cp1252 (зап.европ.)
+                         try:
+                             text = result_file.read_text(encoding="utf-8")
+                         except UnicodeDecodeError:
+                             try:
+                                 text = result_file.read_text(encoding="cp1251")
+                             except UnicodeDecodeError:
+                                 text = result_file.read_text(encoding="cp1252")

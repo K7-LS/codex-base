@@ -1,0 +1,11 @@
+{
+  "CANDIDATE_OFFLINE": "PASS",
+  "CODEX_CANARY": "NOT_RUN",
+  "FOUNDATION_SYNTHETIC": "PASS",
+  "FULL_RELEASE_CODEX": "NOT_PASS",
+  "MATCHED_AB": "NOT_RUN",
+  "PROGRAM_RELEASE": "0/3",
+  "candidate_dir": "C:\\Users\\Даниил ПК\\Desktop\\Claude\\Заведомо проигранный бой (или нет)\\repos\\codex-base\\dist\\candidate-0.1.0",
+  "candidate_zip_sha256": "545c0f80b0c3de4785f8a75022c014729b1561727e5bbe253e3f0848bce973f2",
+  "generated_at_utc": "2026-07-26T16:25:51Z"
+}

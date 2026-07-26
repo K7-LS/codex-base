@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "estimator": "ceil(utf8_bytes/3)",
+  "limits": {
+    "hot_tokens": 1500,
+    "skill_discovery_chars": 7200,
+    "agent_discovery_chars": 4000
+  },
+  "release_thresholds": {
+    "base_controlled_reduction_percent": 70,
+    "matched_total_input_reduction_percent": 25
+  },
+  "simple_prompt": {
+    "tool_calls": 0,
+    "subagents": 0,
+    "reviewers": 0
+  }
+}
