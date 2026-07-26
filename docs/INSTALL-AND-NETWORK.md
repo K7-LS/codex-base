@@ -39,6 +39,7 @@ Foundation хранит собственные transaction state и backups от
 затем SHA ZIP/manifest/lock/evidence, все release-gates и совпадение внешнего
 component lock с embedded-копией. Запускается только Foundation engine,
 извлечённый из уже проверенного ZIP и совпавший с его pinned version/hash.
+Если post-install `doctor` не проходит, wrapper сразу вызывает rollback.
 
 ## Команды
 

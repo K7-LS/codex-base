@@ -396,6 +396,7 @@ def invoke_foundation(
     executable = _powershell()
     home = os.environ.get("CODEX_BASE_TARGET_HOME") or str(Path.home())
     client_id, client_version = detect_codex_client(runner)
+    installed = False
     for command in ("plan", "install", "doctor"):
         result = runner(
             [
@@ -418,7 +419,34 @@ def invoke_foundation(
         )
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "").strip()
+            if installed:
+                rollback = runner(
+                    [
+                        executable,
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        str(foundation),
+                        "rollback",
+                        "-Home",
+                        home,
+                        "-Target",
+                        "codex",
+                    ],
+                )
+                if rollback.returncode != 0:
+                    rollback_detail = (
+                        rollback.stderr or rollback.stdout or ""
+                    ).strip()
+                    raise RuntimeError(
+                        f"Foundation {command} failed: {detail}; "
+                        "automatic rollback failed: "
+                        f"{rollback_detail}"
+                    )
             raise RuntimeError(f"Foundation {command} failed: {detail}")
+        if command == "install":
+            installed = True
 
 
 def main(argv: list[str] | None = None) -> int:

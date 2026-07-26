@@ -333,6 +333,44 @@ def test_sync_detects_exact_codex_client_and_passes_generic_client_contract(
         assert command[client_version + 1] == "0.146.0-alpha.3.1"
 
 
+def test_sync_automatically_rolls_back_when_post_install_doctor_fails(
+    repo_root, tmp_path, monkeypatch
+):
+    sync = _load_sync(repo_root)
+    foundation = tmp_path / "foundation.ps1"
+    foundation.write_text("exit 0\n", encoding="utf-8")
+    archive = tmp_path / "candidate.zip"
+    archive.write_bytes(b"candidate")
+    target_home = tmp_path / "home"
+    target_home.mkdir()
+    monkeypatch.setenv("CODEX_BASE_TARGET_HOME", str(target_home))
+    commands = []
+
+    def runner(command):
+        commands.append(list(command))
+        if command[0] == "codex":
+            return _completed(
+                command,
+                stdout="codex-cli 0.146.0-alpha.3.1\n",
+            )
+        if (
+            str(foundation) in command
+            and command[command.index(str(foundation)) + 1] == "doctor"
+        ):
+            return _completed(command, returncode=30, stderr="drift")
+        return _completed(command)
+
+    with pytest.raises(RuntimeError, match="Foundation doctor failed"):
+        sync.invoke_foundation(archive, foundation, runner=runner)
+
+    foundation_actions = [
+        command[command.index(str(foundation)) + 1]
+        for command in commands
+        if str(foundation) in command
+    ]
+    assert foundation_actions == ["plan", "install", "doctor", "rollback"]
+
+
 def test_sync_rejects_unparseable_codex_client_version(repo_root):
     sync = _load_sync(repo_root)
 
