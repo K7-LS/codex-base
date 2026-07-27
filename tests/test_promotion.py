@@ -68,6 +68,9 @@ def _candidate(repo_root: Path, tmp_path: Path) -> tuple[Path, dict[str, object]
         shutil.copy2(path, candidate / path.name)
     binding = release_binding_from_manifest(built.manifest)
     offline = {
+        "schema_version": 1,
+        "target": "codex",
+        "version": "0.1.0",
         "release_binding": binding,
         "CANDIDATE_OFFLINE": "PASS",
     }
@@ -88,6 +91,9 @@ def _final_evidence(
     failed_gate: str | None = None,
 ) -> Path:
     evidence = {
+        "schema_version": 1,
+        "target": "codex",
+        "version": str(binding["version"]),
         "release_binding": binding,
         **{gate: "PASS" for gate in REQUIRED_FULL_RELEASE_GATES},
         "RELEASE_INTEGRITY": "PASS",
@@ -170,6 +176,23 @@ def test_codex_package_acceptance_requires_release_integrity(
             stable.evidence_path,
             stable.manifest_path.parent / "package-acceptance.json",
         )
+
+
+def test_codex_package_acceptance_rejects_wrong_evidence_identity(
+    repo_root, tmp_path
+):
+    candidate, binding = _candidate(repo_root, tmp_path)
+    final = _final_evidence(
+        tmp_path / "final-evidence.json",
+        binding,
+    )
+    evidence = json.loads(final.read_text(encoding="utf-8"))
+    evidence["target"] = "other"
+    evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
+    final.write_bytes(_json_bytes(evidence))
+
+    with pytest.raises(ValueError, match="identity"):
+        promote_candidate(candidate, final, tmp_path / "stable")
 
 
 @pytest.mark.parametrize(

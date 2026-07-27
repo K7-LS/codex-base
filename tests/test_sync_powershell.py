@@ -292,6 +292,25 @@ def test_sync_powershell_runtime_is_target_neutral_and_policy_driven(
         assert required.lower() in source
 
 
+def test_sync_control_skill_ships_only_the_canonical_powershell_updater(
+    repo_root,
+):
+    tools = (
+        repo_root
+        / "control-skills"
+        / "sync-base"
+        / "tools"
+    )
+
+    runtimes = sorted(
+        path.name
+        for path in tools.iterdir()
+        if path.is_file() and path.suffix in {".ps1", ".py"}
+    )
+
+    assert runtimes == ["sync_base.ps1"]
+
+
 @pytest.mark.parametrize("executable", POWERSHELLS)
 def test_sync_powershell_selects_latest_stable_semver(
     repo_root, executable
@@ -345,6 +364,55 @@ def test_sync_powershell_selects_latest_stable_semver(
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip() == "codex-v1.10.0"
+
+
+@pytest.mark.parametrize("executable", POWERSHELLS)
+def test_sync_powershell_rolls_back_after_post_install_doctor_failure(
+    repo_root,
+    executable,
+):
+    script = (
+        repo_root
+        / "control-skills"
+        / "sync-base"
+        / "tools"
+        / "sync_base.ps1"
+    )
+    policy = (
+        repo_root
+        / "control-skills"
+        / "sync-base"
+        / "sync-policy.json"
+    )
+    result = _run_library_probe(
+        executable,
+        script,
+        policy,
+        (
+            "$script:Calls = [Collections.Generic.List[string]]::new(); "
+            "function Invoke-LlmFoundationCommand { "
+            "param($Verified, [string]$Command, [string]$ClientVersion); "
+            "$script:Calls.Add($Command); "
+            "if ($Command -ceq 'doctor') { "
+            "return [pscustomobject]@{ exit_code = 30; output = 'drift' } "
+            "}; "
+            "return [pscustomobject]@{ exit_code = 0; output = '' } "
+            "}; "
+            "$Verified = [pscustomobject]@{ "
+            "asset_path = 'candidate.zip'; foundation_path = 'foundation.ps1'; "
+            "client_id = 'codex-cli'; client_version = '1.2.3' }; "
+            "try { "
+            "Invoke-LlmVerifiedWorkflow -Verified $Verified "
+            "-ClientVersion '1.2.3' "
+            "} catch { Write-Output ('ERROR:' + $_.Exception.Message) }; "
+            "Write-Output ($script:Calls -join ',')"
+        ),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        "ERROR:Foundation doctor failed.",
+        "plan,install,doctor,rollback",
+    ]
 
 
 @pytest.mark.parametrize("executable", POWERSHELLS)
@@ -430,6 +498,68 @@ def test_sync_powershell_accepts_a_fully_bound_release_fixture(
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip() == "0.146.0-alpha.3.1"
+
+
+@pytest.mark.parametrize("executable", POWERSHELLS)
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        ("gate", "acceptance evidence is not pass: codex_canary"),
+        ("binding", "acceptance evidence binding differs: version"),
+    ],
+)
+def test_sync_powershell_rejects_failed_gate_or_cross_bound_evidence(
+    repo_root,
+    executable,
+    tmp_path,
+    mutation,
+    expected_error,
+):
+    release_dir, tag = _write_verified_release_fixture(
+        tmp_path / "release"
+    )
+    evidence_path = release_dir / "acceptance-evidence.json"
+    manifest_path = release_dir / "release-manifest.json"
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    if mutation == "gate":
+        evidence["CODEX_CANARY"] = "NOT_RUN"
+    else:
+        evidence["release_binding"]["version"] = "9.9.9"
+    evidence_bytes = _json_bytes(evidence)
+    evidence_path.write_bytes(evidence_bytes)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["acceptance_evidence_sha256"] = _sha256_bytes(
+        evidence_bytes
+    )
+    manifest_path.write_bytes(_json_bytes(manifest))
+
+    script = (
+        repo_root
+        / "control-skills"
+        / "sync-base"
+        / "tools"
+        / "sync_base.ps1"
+    )
+    policy = (
+        repo_root
+        / "control-skills"
+        / "sync-base"
+        / "sync-policy.json"
+    )
+    result = _run_library_probe(
+        executable,
+        script,
+        policy,
+        (
+            f"Assert-LlmReleaseFiles "
+            f"-Directory '{release_dir}' -Tag '{tag}'"
+        ),
+    )
+
+    assert result.returncode != 0
+    assert expected_error in (
+        result.stdout + result.stderr
+    ).lower()
 
 
 @pytest.mark.parametrize("executable", POWERSHELLS)

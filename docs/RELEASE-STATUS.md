@@ -21,7 +21,8 @@ bytes и требует явный `PASS` каждого release-gate.
 - hub canary;
 - stable GitHub Release и immutable/asset attestation на опубликованном tag;
 - employee rollout;
-- нативные реализации `claude-base-v2` и `opencode-base`.
+- принятые client-version, package acceptance и canary для реализованных
+  `claude-base-v2` и `opencode-base`.
 
 Поэтому `FULL_RELEASE_CODEX` остаётся `NOT_PASS`, а общий program verdict —
 `0/3`.

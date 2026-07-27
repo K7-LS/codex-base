@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+# Frozen protocol reference used only by legacy parity tests. The installable
+# control skill ships one executable updater: tools/sync_base.ps1.
+
 import argparse
 import base64
 import ctypes

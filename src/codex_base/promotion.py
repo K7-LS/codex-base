@@ -57,6 +57,12 @@ def _verify_evidence(
     *,
     require_full_release: bool,
 ) -> None:
+    if (
+        evidence.get("schema_version") != 1
+        or evidence.get("target") != "codex"
+        or evidence.get("version") != binding.get("version")
+    ):
+        raise ValueError("acceptance evidence identity differs")
     if evidence.get("evidence_body_sha256") != evidence_body_sha256(
         evidence
     ):

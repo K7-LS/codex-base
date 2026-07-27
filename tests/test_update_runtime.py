@@ -21,12 +21,14 @@ import pytest
 def _load_sync(repo_root):
     path = (
         repo_root
-        / "control-skills"
-        / "sync-base"
-        / "tools"
-        / "sync_base.py"
+        / "tests"
+        / "support"
+        / "sync_base_reference.py"
     )
-    spec = importlib.util.spec_from_file_location("sync_base_under_test", path)
+    spec = importlib.util.spec_from_file_location(
+        "sync_base_protocol_reference",
+        path,
+    )
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

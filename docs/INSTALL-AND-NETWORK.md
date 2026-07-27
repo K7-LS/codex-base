@@ -47,17 +47,23 @@ component lock с embedded-копией. Запускается только Fou
 # Нативный control-skill внутри Codex
 $sync-base
 
+# Найти Foundation, pinned установленным пакетом
+$Foundation = Get-ChildItem `
+  "$env:USERPROFILE\.codex\base\foundation" `
+  -Filter foundation.ps1 -File -Recurse |
+  Select-Object -First 1 -ExpandProperty FullName
+
 # Прямая диагностика
-pwsh -NoProfile -File "$env:USERPROFILE\.codex\base\foundation\0.1.0\foundation.ps1" `
+pwsh -NoProfile -File $Foundation `
   doctor -Home $env:USERPROFILE -Target codex `
   -ClientId codex-cli -ClientVersion 0.146.0-alpha.3.1 -Json
 
 # Инвентарь
-pwsh -NoProfile -File "$env:USERPROFILE\.codex\base\foundation\0.1.0\foundation.ps1" `
+pwsh -NoProfile -File $Foundation `
   inventory -Home $env:USERPROFILE -Target codex -Json
 
 # Откат последней установки
-pwsh -NoProfile -File "$env:USERPROFILE\.codex\base\foundation\0.1.0\foundation.ps1" `
+pwsh -NoProfile -File $Foundation `
   rollback -Home $env:USERPROFILE -Target codex -Json
 ```
 

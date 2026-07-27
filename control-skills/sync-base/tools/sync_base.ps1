@@ -562,6 +562,43 @@ function Invoke-LlmFoundationCommand {
     }
 }
 
+function Invoke-LlmVerifiedWorkflow {
+    param(
+        [Parameter(Mandatory = $true)]$Verified,
+        [Parameter(Mandatory = $true)][string]$ClientVersion
+    )
+
+    $installed = $false
+    foreach ($command in @('plan', 'install', 'doctor')) {
+        $result = Invoke-LlmFoundationCommand `
+            -Verified $Verified `
+            -Command $command `
+            -ClientVersion $ClientVersion
+        if ([int]$result.exit_code -ne 0) {
+            if ($installed) {
+                $rollback = Invoke-LlmFoundationCommand `
+                    -Verified $Verified `
+                    -Command 'rollback' `
+                    -ClientVersion $ClientVersion
+                if ([int]$rollback.exit_code -ne 0) {
+                    throw (
+                        "Foundation $command failed and rollback failed."
+                    )
+                }
+            }
+            throw "Foundation $command failed."
+        }
+        if ($command -ceq 'install') {
+            $installed = $true
+        }
+        if (-not [string]::IsNullOrWhiteSpace(
+            [string]$result.output
+        )) {
+            Write-Output $result.output
+        }
+    }
+}
+
 function Invoke-LlmSyncMain {
     if ([string]$script:LlmSyncPolicy.client.acceptance -cne 'PASS') {
         throw 'Client release contract is not accepted; canary is required.'
@@ -653,35 +690,9 @@ function Invoke-LlmSyncMain {
         if ($clientVersion -cne [string]$verified.client_version) {
             throw 'Installed client version is not accepted by this release.'
         }
-        $installed = $false
-        foreach ($command in @('plan', 'install', 'doctor')) {
-            $result = Invoke-LlmFoundationCommand `
-                -Verified $verified `
-                -Command $command `
-                -ClientVersion $clientVersion
-            if ([int]$result.exit_code -ne 0) {
-                if ($installed) {
-                    $rollback = Invoke-LlmFoundationCommand `
-                        -Verified $verified `
-                        -Command 'rollback' `
-                        -ClientVersion $clientVersion
-                    if ([int]$rollback.exit_code -ne 0) {
-                        throw (
-                            "Foundation $command failed and rollback failed."
-                        )
-                    }
-                }
-                throw "Foundation $command failed."
-            }
-            if ($command -ceq 'install') {
-                $installed = $true
-            }
-            if (-not [string]::IsNullOrWhiteSpace(
-                [string]$result.output
-            )) {
-                Write-Output $result.output
-            }
-        }
+        Invoke-LlmVerifiedWorkflow `
+            -Verified $verified `
+            -ClientVersion $clientVersion
         Write-Output (
             [string]$script:LlmSyncPolicy.target +
             '-base ' + $tag + ' installed and verified.'
