@@ -199,3 +199,78 @@ def promote_candidate(
         evidence_path=destination_evidence,
         zip_sha256=_sha256_bytes(zip_bytes),
     )
+
+
+def create_package_acceptance(
+    stable_manifest_path: Path,
+    evidence_path: Path,
+    output_path: Path,
+) -> dict[str, object]:
+    stable = _load_json(stable_manifest_path)
+    evidence = _load_json(evidence_path)
+    binding = release_binding_from_manifest(stable)
+    if (
+        stable.get("schema_version") != 1
+        or stable.get("target") != "codex"
+        or stable.get("channel") != "stable"
+        or stable.get("tag") != f"codex-v{stable.get('version')}"
+    ):
+        raise ValueError("stable Codex release manifest is invalid")
+    _verify_evidence(
+        evidence,
+        binding,
+        require_full_release=True,
+    )
+    if evidence.get("RELEASE_INTEGRITY") != "PASS":
+        raise ValueError("release integrity is not PASS")
+    evidence_bytes = evidence_path.read_bytes()
+    if _sha256_bytes(evidence_bytes) != stable.get(
+        "acceptance_evidence_sha256"
+    ):
+        raise ValueError("stable acceptance evidence hash differs")
+    requires = stable.get("requires")
+    if (
+        not isinstance(requires, dict)
+        or requires.get("immutable_release") is not True
+        or requires.get("release_attestation") is not True
+    ):
+        raise ValueError("stable release trust requirements differ")
+    client = stable.get("client")
+    if (
+        not isinstance(client, dict)
+        or client.get("id") != "codex-cli"
+        or not isinstance(client.get("supported_version"), str)
+        or not client["supported_version"]
+    ):
+        raise ValueError("stable Codex client contract is invalid")
+    asset = stable.get("asset")
+    if not isinstance(asset, dict):
+        raise ValueError("stable release asset record is invalid")
+    asset_path = stable_manifest_path.parent / str(asset.get("name") or "")
+    asset_bytes = asset_path.read_bytes()
+    if (
+        _sha256_bytes(asset_bytes) != asset.get("sha256")
+        or len(asset_bytes) != asset.get("bytes")
+    ):
+        raise ValueError("stable release asset binding differs")
+    result = {
+        "schema_version": 1,
+        "target": "codex",
+        "package_acceptance": "PASS",
+        "client": client,
+        "asset": asset,
+        "release_manifest": {
+            "name": stable_manifest_path.name,
+            "sha256": _sha256_bytes(stable_manifest_path.read_bytes()),
+            "bytes": stable_manifest_path.stat().st_size,
+        },
+        "acceptance_evidence": {
+            "name": evidence_path.name,
+            "sha256": _sha256_bytes(evidence_bytes),
+            "bytes": len(evidence_bytes),
+        },
+        "immutable_release": True,
+        "release_attestation": True,
+    }
+    output_path.write_bytes(_json_bytes(result))
+    return result

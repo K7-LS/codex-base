@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "target": "codex",
+  "repository": "daniileliseev1337/codex-base",
+  "tag_prefix": "codex-v",
+  "transformation": "codex-native-v1",
+  "install_root": ".codex",
+  "client": {
+    "id": "codex-cli",
+    "command": [
+      "codex",
+      "--version"
+    ],
+    "acceptance": "PASS",
+    "version_pattern": "^codex-cli (?<version>[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?)$"
+  },
+  "evidence": {
+    "style": "flat",
+    "required_verdicts": [
+      "FOUNDATION_SYNTHETIC",
+      "OFFLINE_CODEX_CONTENT",
+      "STATIC_TOKEN_ACCEPTANCE",
+      "CODEX_OFFLINE_INTEGRATION",
+      "CODEX_TESTS",
+      "CANDIDATE_OFFLINE",
+      "MATCHED_AB",
+      "CODEX_CANARY",
+      "FULL_RELEASE_CODEX",
+      "RELEASE_INTEGRITY"
+    ],
+    "program_release": "1/3"
+  }
+}

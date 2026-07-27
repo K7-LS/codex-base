@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import ctypes
 import hashlib
 import json
 import os
@@ -10,8 +12,10 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable, Iterator, Sequence
+from urllib.parse import quote
 
 
 REPOSITORY = "daniileliseev1337/codex-base"
@@ -32,8 +36,36 @@ REQUIRED_FULL_RELEASE_GATES = (
     "CODEX_CANARY",
     "FULL_RELEASE_CODEX",
 )
+CONNECTION_ENTROPY = b"llm-foundation-connection-v1"
+CONNECTION_MODES = {"Direct", "VPN", "Proxy"}
+PROXY_TYPES = {"HTTP", "HTTPS", "SOCKS5"}
+AUTH_MODES = {"None", "UsernamePassword"}
+PROXY_SCHEMES = {
+    "HTTP": "http",
+    "HTTPS": "https",
+    "SOCKS5": "socks5h",
+}
+PROXY_ENVIRONMENT = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+    "LLM_FOUNDATION_CONNECTION_MODE",
+)
+SAFE_PROXY_HOST = re.compile(r"^[A-Za-z0-9._:%\[\]-]+$")
 
 Runner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
+
+
+class _DataBlob(ctypes.Structure):
+    _fields_ = [
+        ("cbData", ctypes.c_uint32),
+        ("pbData", ctypes.POINTER(ctypes.c_ubyte)),
+    ]
 
 
 def _default_runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
@@ -52,6 +84,197 @@ def _run_checked(runner: Runner, command: Sequence[str]) -> str:
         detail = (result.stderr or result.stdout or "command failed").strip()
         raise RuntimeError(f"{' '.join(command)}: {detail}")
     return result.stdout
+
+
+def _unprotect_current_user(encoded: str) -> bytearray:
+    if os.name != "nt":
+        raise RuntimeError(
+            "saved proxy credentials require the accepted Windows runtime"
+        )
+    try:
+        encrypted = base64.b64decode(encoded, validate=True)
+    except (ValueError, TypeError) as exc:
+        raise RuntimeError("protected proxy credential is invalid") from exc
+    encrypted_buffer = ctypes.create_string_buffer(encrypted)
+    entropy_buffer = ctypes.create_string_buffer(CONNECTION_ENTROPY)
+    input_blob = _DataBlob(
+        len(encrypted),
+        ctypes.cast(encrypted_buffer, ctypes.POINTER(ctypes.c_ubyte)),
+    )
+    entropy_blob = _DataBlob(
+        len(CONNECTION_ENTROPY),
+        ctypes.cast(entropy_buffer, ctypes.POINTER(ctypes.c_ubyte)),
+    )
+    output_blob = _DataBlob()
+    if not ctypes.windll.crypt32.CryptUnprotectData(
+        ctypes.byref(input_blob),
+        None,
+        ctypes.byref(entropy_blob),
+        None,
+        None,
+        0,
+        ctypes.byref(output_blob),
+    ):
+        raise RuntimeError(
+            "protected proxy credential cannot be decrypted for this user"
+        )
+    try:
+        return bytearray(
+            ctypes.string_at(output_blob.pbData, output_blob.cbData)
+        )
+    finally:
+        ctypes.windll.kernel32.LocalFree(output_blob.pbData)
+
+
+def _connection_profile(home: Path) -> tuple[dict[str, object], str | None]:
+    path = home / ".llm-foundation" / "connection.json"
+    if not path.is_file():
+        return (
+            {"schema_version": 1, "mode": "Direct", "proxy": None},
+            None,
+        )
+    try:
+        profile = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("connection profile is unreadable") from exc
+    if (
+        not isinstance(profile, dict)
+        or profile.get("schema_version") != 1
+        or profile.get("mode") not in CONNECTION_MODES
+    ):
+        raise RuntimeError("connection profile schema or mode is invalid")
+    mode = str(profile["mode"])
+    if mode != "Proxy":
+        return (
+            {"schema_version": 1, "mode": mode, "proxy": None},
+            None,
+        )
+    proxy = profile.get("proxy")
+    auth = proxy.get("auth") if isinstance(proxy, dict) else None
+    host = proxy.get("host") if isinstance(proxy, dict) else None
+    port = proxy.get("port") if isinstance(proxy, dict) else None
+    proxy_type = proxy.get("type") if isinstance(proxy, dict) else None
+    auth_mode = auth.get("mode") if isinstance(auth, dict) else None
+    username = auth.get("username") if isinstance(auth, dict) else None
+    if (
+        proxy_type not in PROXY_TYPES
+        or not isinstance(host, str)
+        or not host
+        or not SAFE_PROXY_HOST.fullmatch(host)
+        or isinstance(port, bool)
+        or not isinstance(port, int)
+        or port < 1
+        or port > 65535
+        or auth_mode not in AUTH_MODES
+    ):
+        raise RuntimeError("proxy connection profile is invalid")
+    password: str | None = None
+    if auth_mode == "UsernamePassword":
+        if not isinstance(username, str) or not username.strip():
+            raise RuntimeError("proxy username is required")
+        credential = home / ".llm-foundation" / "connection.cred"
+        if not credential.is_file():
+            raise RuntimeError(
+                "protected proxy credential is missing; save the "
+                "connection profile again"
+            )
+        plain = _unprotect_current_user(
+            credential.read_text(encoding="ascii").strip()
+        )
+        try:
+            password = plain.decode("utf-16-le")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError("protected proxy credential is invalid") from exc
+        finally:
+            for index in range(len(plain)):
+                plain[index] = 0
+        if not password:
+            raise RuntimeError("protected proxy credential is empty")
+    normalized = {
+        "schema_version": 1,
+        "mode": "Proxy",
+        "proxy": {
+            "type": proxy_type,
+            "host": host,
+            "port": port,
+            "auth": {
+                "mode": auth_mode,
+                "username": username
+                if auth_mode == "UsernamePassword"
+                else None,
+            },
+        },
+    }
+    return normalized, password
+
+
+def _proxy_host_for_uri(host: str) -> str:
+    if host.startswith("[") and host.endswith("]"):
+        return host
+    return f"[{host}]" if ":" in host else host
+
+
+@contextmanager
+def connection_environment(
+    home: Path,
+) -> Iterator[dict[str, object]]:
+    full_home = Path(home).resolve()
+    if not full_home.is_dir():
+        raise RuntimeError("connection profile home does not exist")
+    profile, password = _connection_profile(full_home)
+    previous = {name: os.environ.get(name) for name in PROXY_ENVIRONMENT}
+    try:
+        for name in PROXY_ENVIRONMENT:
+            os.environ.pop(name, None)
+        mode = str(profile["mode"])
+        os.environ["LLM_FOUNDATION_CONNECTION_MODE"] = mode
+        if mode != "Proxy":
+            os.environ["NO_PROXY"] = "*"
+            yield {
+                "mode": mode,
+                "uses_proxy": False,
+                "proxy_type": None,
+            }
+            return
+
+        proxy = profile["proxy"]
+        assert isinstance(proxy, dict)
+        auth = proxy["auth"]
+        assert isinstance(auth, dict)
+        userinfo = ""
+        if auth["mode"] == "UsernamePassword":
+            userinfo = (
+                quote(str(auth["username"]), safe="")
+                + ":"
+                + quote(str(password), safe="")
+                + "@"
+            )
+        proxy_type = str(proxy["type"])
+        proxy_uri = (
+            PROXY_SCHEMES[proxy_type]
+            + "://"
+            + userinfo
+            + _proxy_host_for_uri(str(proxy["host"]))
+            + ":"
+            + str(proxy["port"])
+        )
+        os.environ["HTTP_PROXY"] = proxy_uri
+        os.environ["HTTPS_PROXY"] = proxy_uri
+        if proxy_type == "SOCKS5":
+            os.environ["ALL_PROXY"] = proxy_uri
+        yield {
+            "mode": "Proxy",
+            "uses_proxy": True,
+            "proxy_type": proxy_type,
+        }
+    finally:
+        password = None
+        for name in PROXY_ENVIRONMENT:
+            value = previous[name]
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def select_latest_stable(releases: list[dict[str, object]]) -> str:
@@ -458,18 +681,24 @@ def main(argv: list[str] | None = None) -> int:
         print("BLOCKED: GitHub CLI (gh) is required", file=sys.stderr)
         return 2
     try:
-        tag = discover_latest_stable()
-        if args.check:
-            print(tag)
-            return 0
-        with tempfile.TemporaryDirectory(prefix="codex-base-sync-") as temporary:
-            release_dir = Path(temporary)
-            download_release(tag, release_dir)
-            zip_path, _, foundation = verify_downloaded_release(
-                release_dir,
-                tag,
-            )
-            invoke_foundation(zip_path, foundation)
+        home = Path(
+            os.environ.get("CODEX_BASE_TARGET_HOME") or Path.home()
+        )
+        with connection_environment(home):
+            tag = discover_latest_stable()
+            if args.check:
+                print(tag)
+                return 0
+            with tempfile.TemporaryDirectory(
+                prefix="codex-base-sync-"
+            ) as temporary:
+                release_dir = Path(temporary)
+                download_release(tag, release_dir)
+                zip_path, _, foundation = verify_downloaded_release(
+                    release_dir,
+                    tag,
+                )
+                invoke_foundation(zip_path, foundation)
         print(f"Codex-base {tag} installed and verified.")
         return 0
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as exc:

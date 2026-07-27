@@ -285,6 +285,16 @@ def build_component_lock(
         )
         for item in skills_catalog
     ]
+    control_skills = [
+        _component_record(
+            repo_root,
+            path.name,
+            _tree_files(path),
+            source,
+        )
+        for path in sorted((repo_root / "control-skills").iterdir())
+        if path.is_dir()
+    ]
     cold_values = [
         value
         for group in ("memory", "chains", "commands")
@@ -299,6 +309,14 @@ def build_component_lock(
         )
         for value in cold_values
     ]
+    runtime = [
+        _component_record(
+            repo_root,
+            "runtime",
+            _tree_files(repo_root / "runtime"),
+            source,
+        )
+    ]
     return {
         "schema_version": 1,
         "target": "codex",
@@ -307,7 +325,9 @@ def build_component_lock(
         "components": {
             "agents": agents,
             "skills": skills,
+            "control_skills": control_skills,
             "cold": cold,
+            "runtime": runtime,
         },
     }
 
@@ -437,6 +457,9 @@ def _build_release_from_export(
         source_root / "runtime" / "hooks",
         ".codex/base/runtime/hooks",
     )
+    entries[".codex/base/runtime/connection.ps1"] = (
+        source_root / "runtime" / "connection.ps1"
+    ).read_bytes()
     _add_tree(
         entries,
         foundation_root,
@@ -494,6 +517,10 @@ def _build_release_from_export(
             "consumer_session_upload": False,
             "credentials_included": False,
         },
+        "environment": {
+            "scope": "current-user",
+            "set": [],
+        },
         "files": package_files,
     }
     package_manifest_bytes = _json_bytes(package_manifest)
@@ -508,6 +535,10 @@ def _build_release_from_export(
         "version": version,
         "tag": f"codex-v{version}",
         "channel": "candidate",
+        "client": {
+            "id": "codex-cli",
+            "supported_version": SUPPORTED_CODEX_CLIENT,
+        },
         "supported_codex_client": SUPPORTED_CODEX_CLIENT,
         "foundation_engine_version": foundation_version,
         "foundation_engine_manifest_sha256": foundation_manifest_sha256,

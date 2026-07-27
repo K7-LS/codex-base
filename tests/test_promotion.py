@@ -13,6 +13,7 @@ from codex_base.acceptance import (
 )
 from codex_base.promotion import (
     REQUIRED_FULL_RELEASE_GATES,
+    create_package_acceptance,
     promote_candidate,
 )
 from codex_base.release import bind_acceptance_evidence, build_release
@@ -89,6 +90,7 @@ def _final_evidence(
     evidence = {
         "release_binding": binding,
         **{gate: "PASS" for gate in REQUIRED_FULL_RELEASE_GATES},
+        "RELEASE_INTEGRITY": "PASS",
         "PROGRAM_RELEASE": "1/3",
     }
     if failed_gate:
@@ -117,6 +119,57 @@ def test_promotion_reuses_exact_candidate_zip_bytes(repo_root, tmp_path):
         final.read_bytes()
     ).hexdigest()
     assert len(manifest["promoted_from_candidate_manifest_sha256"]) == 64
+
+
+def test_codex_package_acceptance_matches_employee_installer_contract(
+    repo_root, tmp_path
+):
+    candidate, binding = _candidate(repo_root, tmp_path)
+    final = _final_evidence(
+        tmp_path / "final-evidence.json",
+        binding,
+    )
+    stable = promote_candidate(candidate, final, tmp_path / "stable")
+
+    output = stable.manifest_path.parent / "package-acceptance.json"
+    acceptance = create_package_acceptance(
+        stable.manifest_path,
+        stable.evidence_path,
+        output,
+    )
+
+    assert json.loads(output.read_text(encoding="utf-8")) == acceptance
+    assert acceptance["target"] == "codex"
+    assert acceptance["package_acceptance"] == "PASS"
+    assert acceptance["client"] == {
+        "id": "codex-cli",
+        "supported_version": "0.146.0-alpha.3.1",
+    }
+    assert acceptance["asset"]["sha256"] == stable.zip_sha256
+    assert acceptance["immutable_release"] is True
+    assert acceptance["release_attestation"] is True
+
+
+def test_codex_package_acceptance_requires_release_integrity(
+    repo_root, tmp_path
+):
+    candidate, binding = _candidate(repo_root, tmp_path)
+    final = _final_evidence(
+        tmp_path / "final-evidence.json",
+        binding,
+    )
+    evidence = json.loads(final.read_text(encoding="utf-8"))
+    evidence["RELEASE_INTEGRITY"] = "NOT_PASS"
+    evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
+    final.write_bytes(_json_bytes(evidence))
+    stable = promote_candidate(candidate, final, tmp_path / "stable")
+
+    with pytest.raises(ValueError, match="release integrity"):
+        create_package_acceptance(
+            stable.manifest_path,
+            stable.evidence_path,
+            stable.manifest_path.parent / "package-acceptance.json",
+        )
 
 
 @pytest.mark.parametrize(

@@ -61,7 +61,14 @@ def test_component_lock_covers_all_vendored_runtime_components(repo_root):
     assert lock["version"] == "0.1.0"
     assert len(lock["components"]["agents"]) == 16
     assert len(lock["components"]["skills"]) == 37
+    assert len(lock["components"]["control_skills"]) == 1
     assert len(lock["components"]["cold"]) == 25
+    assert len(lock["components"]["runtime"]) == 1
+    runtime_paths = {
+        row["path"]
+        for row in lock["components"]["runtime"][0]["files"]
+    }
+    assert "runtime/connection.ps1" in runtime_paths
     rendered = lock["provenance"]["rendered_target"]
     assert rendered["repository"].endswith("/codex-base")
     assert len(rendered["commit"]) == 40
@@ -118,6 +125,7 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
         assert "package-manifest.json" in names
         assert ".codex/base/components.lock.json" in names
         assert ".codex/base/foundation/0.1.0/foundation.ps1" in names
+        assert ".codex/base/runtime/connection.ps1" in names
         assert ".agents/skills/sync-base/SKILL.md" in names
         assert len([name for name in names if name.startswith(".codex/agents/")]) == 16
         assert (
@@ -175,6 +183,10 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
             "consumer_push": False,
             "consumer_session_upload": False,
             "credentials_included": False,
+        }
+        assert package_manifest["environment"] == {
+            "scope": "current-user",
+            "set": [],
         }
         assert archive.read(
             ".codex/base/components.lock.json"

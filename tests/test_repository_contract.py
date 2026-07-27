@@ -331,3 +331,13 @@ def test_worst_case_windows_install_paths_stay_below_legacy_limit(repo_root):
 
     assert installed
     assert max(len(str(path)) for path in installed) < 240
+
+
+def test_llm_interop_documentation_matches_bridge_cli(repo_root):
+    skill = (
+        repo_root / "skills" / "llm-interop" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "--task .llm-interop/task.json" in skill
+    assert "references/task.schema.json" in skill
+    assert "--custom agent" not in skill
+    assert "custom agent.schema.json" not in skill

@@ -1,4 +1,11 @@
 $ErrorActionPreference = 'Stop'
+$connectionRuntime = Join-Path (
+    Split-Path -Parent $PSScriptRoot
+) 'connection.ps1'
+if (-not (Test-Path -LiteralPath $connectionRuntime -PathType Leaf)) {
+    exit 0
+}
+. $connectionRuntime
 
 function Write-Utf8NoBom {
     param([string]$Path, [string]$Text)
@@ -33,14 +40,14 @@ try {
         $releases = Get-Content -LiteralPath $fixture -Raw -Encoding UTF8 |
             ConvertFrom-Json
     } else {
-        $headers = @{
-            Accept = 'application/vnd.github+json'
-            'User-Agent' = 'codex-base-version-check/1'
-        }
-        $releases = Invoke-RestMethod -Method Get `
-            -Uri 'https://api.github.com/repos/daniileliseev1337/codex-base/releases?per_page=20' `
-            -Headers $headers `
-            -TimeoutSec 5
+        $releases = Invoke-WithLlmConnection `
+            -HomePath $env:USERPROFILE `
+            -ScriptBlock {
+                Invoke-LlmJsonGet `
+                    -Uri 'https://api.github.com/repos/daniileliseev1337/codex-base/releases?per_page=20' `
+                    -UserAgent 'codex-base-version-check/1' `
+                    -TimeoutSeconds 5
+            }
     }
 
     $stable = @($releases) |

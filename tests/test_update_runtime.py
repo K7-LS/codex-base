@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import hashlib
+import http.server
 import importlib.util
 import json
 import os
 import shutil
 import subprocess
+import threading
 import tomllib
 import zipfile
+import base64
+import ctypes
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -30,6 +35,41 @@ def _load_sync(repo_root):
 
 def _completed(command, returncode=0, stdout="", stderr=""):
     return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+
+
+class _DataBlob(ctypes.Structure):
+    _fields_ = [
+        ("cbData", ctypes.c_uint32),
+        ("pbData", ctypes.POINTER(ctypes.c_ubyte)),
+    ]
+
+
+def _protect_for_current_windows_user(payload: bytes, entropy: bytes) -> bytes:
+    payload_buffer = ctypes.create_string_buffer(payload)
+    entropy_buffer = ctypes.create_string_buffer(entropy)
+    input_blob = _DataBlob(
+        len(payload),
+        ctypes.cast(payload_buffer, ctypes.POINTER(ctypes.c_ubyte)),
+    )
+    entropy_blob = _DataBlob(
+        len(entropy),
+        ctypes.cast(entropy_buffer, ctypes.POINTER(ctypes.c_ubyte)),
+    )
+    output_blob = _DataBlob()
+    if not ctypes.windll.crypt32.CryptProtectData(
+        ctypes.byref(input_blob),
+        None,
+        ctypes.byref(entropy_blob),
+        None,
+        None,
+        0,
+        ctypes.byref(output_blob),
+    ):
+        raise ctypes.WinError()
+    try:
+        return ctypes.string_at(output_blob.pbData, output_blob.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(output_blob.pbData)
 
 
 def _json_bytes(value: object) -> bytes:
@@ -380,6 +420,422 @@ def test_sync_rejects_unparseable_codex_client_version(repo_root):
         )
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows DPAPI contract")
+def test_sync_connection_direct_and_vpn_never_require_a_proxy(
+    repo_root, tmp_path, monkeypatch
+):
+    sync = _load_sync(repo_root)
+    home = tmp_path / "home"
+    state = home / ".llm-foundation"
+    state.mkdir(parents=True)
+    for mode in ("Direct", "VPN"):
+        (state / "connection.json").write_text(
+            json.dumps(
+                {"schema_version": 1, "mode": mode, "proxy": None}
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("HTTP_PROXY", "http://stale.invalid:8080")
+        monkeypatch.setenv("HTTPS_PROXY", "http://stale.invalid:8080")
+        monkeypatch.setenv("ALL_PROXY", "socks5://stale.invalid:1080")
+        with sync.connection_environment(home) as connection:
+            assert connection == {
+                "mode": mode,
+                "uses_proxy": False,
+                "proxy_type": None,
+            }
+            assert "HTTP_PROXY" not in os.environ
+            assert "HTTPS_PROXY" not in os.environ
+            assert "ALL_PROXY" not in os.environ
+            assert os.environ["NO_PROXY"] == "*"
+            assert os.environ["LLM_FOUNDATION_CONNECTION_MODE"] == mode
+        assert os.environ["HTTP_PROXY"] == "http://stale.invalid:8080"
+        assert os.environ["HTTPS_PROXY"] == "http://stale.invalid:8080"
+        assert os.environ["ALL_PROXY"] == "socks5://stale.invalid:1080"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows DPAPI contract")
+@pytest.mark.parametrize(
+    ("proxy_type", "scheme", "all_proxy"),
+    [
+        ("HTTP", "http", False),
+        ("HTTPS", "https", False),
+        ("SOCKS5", "socks5h", True),
+    ],
+)
+def test_sync_connection_supports_authenticated_proxy_types_without_leaking(
+    repo_root,
+    tmp_path,
+    monkeypatch,
+    proxy_type,
+    scheme,
+    all_proxy,
+):
+    sync = _load_sync(repo_root)
+    home = tmp_path / "home"
+    state = home / ".llm-foundation"
+    state.mkdir(parents=True)
+    profile = {
+        "schema_version": 1,
+        "mode": "Proxy",
+        "proxy": {
+            "type": proxy_type,
+            "host": "proxy.example.test",
+            "port": 8443,
+            "auth": {
+                "mode": "UsernamePassword",
+                "username": "alice+ops",
+            },
+        },
+    }
+    (state / "connection.json").write_text(
+        json.dumps(profile),
+        encoding="utf-8",
+    )
+    password = "s e:c@r"
+    encrypted = _protect_for_current_windows_user(
+        password.encode("utf-16-le"),
+        b"llm-foundation-connection-v1",
+    )
+    (state / "connection.cred").write_text(
+        base64.b64encode(encrypted).decode("ascii") + "\n",
+        encoding="ascii",
+    )
+    monkeypatch.delenv("HTTP_PROXY", raising=False)
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
+    monkeypatch.delenv("ALL_PROXY", raising=False)
+
+    with sync.connection_environment(home) as connection:
+        expected = (
+            f"{scheme}://alice%2Bops:s%20e%3Ac%40r@"
+            "proxy.example.test:8443"
+        )
+        assert connection == {
+            "mode": "Proxy",
+            "uses_proxy": True,
+            "proxy_type": proxy_type,
+        }
+        assert os.environ["HTTP_PROXY"] == expected
+        assert os.environ["HTTPS_PROXY"] == expected
+        if all_proxy:
+            assert os.environ["ALL_PROXY"] == expected
+        else:
+            assert "ALL_PROXY" not in os.environ
+        assert password not in json.dumps(connection)
+        assert password not in (state / "connection.json").read_text("utf-8")
+
+    assert "HTTP_PROXY" not in os.environ
+    assert "HTTPS_PROXY" not in os.environ
+    assert "ALL_PROXY" not in os.environ
+
+
+def test_sync_check_applies_saved_connection_only_for_the_network_operation(
+    repo_root, tmp_path, monkeypatch, capsys
+):
+    sync = _load_sync(repo_root)
+    home = tmp_path / "home"
+    state = home / ".llm-foundation"
+    state.mkdir(parents=True)
+    (state / "connection.json").write_text(
+        json.dumps(
+            {"schema_version": 1, "mode": "VPN", "proxy": None}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_BASE_TARGET_HOME", str(home))
+    monkeypatch.setenv("HTTPS_PROXY", "http://stale.invalid:8080")
+    monkeypatch.setattr(sync.shutil, "which", lambda name: "gh.exe")
+
+    def discover():
+        assert os.environ["LLM_FOUNDATION_CONNECTION_MODE"] == "VPN"
+        assert "HTTPS_PROXY" not in os.environ
+        return "codex-v1.2.3"
+
+    monkeypatch.setattr(sync, "discover_latest_stable", discover)
+
+    assert sync.main(["--check"]) == 0
+    assert capsys.readouterr().out.strip() == "codex-v1.2.3"
+    assert os.environ["HTTPS_PROXY"] == "http://stale.invalid:8080"
+    assert "LLM_FOUNDATION_CONNECTION_MODE" not in os.environ
+
+
+@pytest.mark.parametrize(
+    "executable",
+    [
+        value
+        for value in (shutil.which("pwsh"), shutil.which("powershell.exe"))
+        if value
+    ],
+)
+@pytest.mark.parametrize("mode", ["Direct", "VPN"])
+def test_powershell_connection_runtime_keeps_direct_and_vpn_proxy_free(
+    repo_root, tmp_path, executable, mode
+):
+    home = tmp_path / f"home-{Path(executable).stem}-{mode}"
+    state = home / ".llm-foundation"
+    state.mkdir(parents=True)
+    (state / "connection.json").write_text(
+        json.dumps(
+            {"schema_version": 1, "mode": mode, "proxy": None}
+        ),
+        encoding="utf-8",
+    )
+    probe = tmp_path / f"probe-{Path(executable).stem}-{mode}.ps1"
+    runtime = repo_root / "runtime" / "connection.ps1"
+    probe.write_text(
+        """
+. $env:LLM_TEST_CONNECTION_RUNTIME
+$Inside = Invoke-WithLlmConnection -HomePath $env:LLM_TEST_HOME -ScriptBlock {
+    [ordered]@{
+        mode = $env:LLM_FOUNDATION_CONNECTION_MODE
+        has_http_proxy = Test-Path Env:HTTP_PROXY
+        has_https_proxy = Test-Path Env:HTTPS_PROXY
+        has_all_proxy = Test-Path Env:ALL_PROXY
+        no_proxy = $env:NO_PROXY
+    } | ConvertTo-Json -Compress
+}
+$Inside
+[ordered]@{
+    restored_https_proxy = $env:HTTPS_PROXY
+} | ConvertTo-Json -Compress
+""",
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    environment["HTTPS_PROXY"] = "http://stale.invalid:8080"
+    environment["LLM_TEST_CONNECTION_RUNTIME"] = str(runtime)
+    environment["LLM_TEST_HOME"] = str(home)
+    result = subprocess.run(
+        [
+            executable,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(probe),
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    rows = [json.loads(line) for line in result.stdout.splitlines()]
+    assert rows[0] == {
+        "mode": mode,
+        "has_http_proxy": False,
+        "has_https_proxy": False,
+        "has_all_proxy": False,
+        "no_proxy": "*",
+    }
+    assert rows[1]["restored_https_proxy"] == (
+        "http://stale.invalid:8080"
+    )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows DPAPI contract")
+@pytest.mark.parametrize(
+    "executable",
+    [
+        value
+        for value in (shutil.which("pwsh"), shutil.which("powershell.exe"))
+        if value
+    ],
+)
+@pytest.mark.parametrize(
+    ("proxy_type", "scheme", "uses_all_proxy"),
+    [
+        ("HTTP", "http", False),
+        ("HTTPS", "https", False),
+        ("SOCKS5", "socks5h", True),
+    ],
+)
+def test_powershell_connection_runtime_applies_authenticated_proxy_safely(
+    repo_root,
+    tmp_path,
+    executable,
+    proxy_type,
+    scheme,
+    uses_all_proxy,
+):
+    home = tmp_path / (
+        f"proxy-home-{Path(executable).stem}-{proxy_type}"
+    )
+    state = home / ".llm-foundation"
+    state.mkdir(parents=True)
+    username = "alice+ops"
+    password = "s e:c@r"
+    (state / "connection.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "mode": "Proxy",
+                "proxy": {
+                    "type": proxy_type,
+                    "host": "proxy.example.test",
+                    "port": 8443,
+                    "auth": {
+                        "mode": "UsernamePassword",
+                        "username": username,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    encrypted = _protect_for_current_windows_user(
+        password.encode("utf-16-le"),
+        b"llm-foundation-connection-v1",
+    )
+    (state / "connection.cred").write_text(
+        base64.b64encode(encrypted).decode("ascii") + "\n",
+        encoding="ascii",
+    )
+    expected = (
+        f"{scheme}://{quote(username, safe='')}:"
+        f"{quote(password, safe='')}@proxy.example.test:8443"
+    )
+    probe = tmp_path / (
+        f"proxy-probe-{Path(executable).stem}-{proxy_type}.ps1"
+    )
+    runtime = repo_root / "runtime" / "connection.ps1"
+    probe.write_text(
+        f"""
+. $env:LLM_TEST_CONNECTION_RUNTIME
+Invoke-WithLlmConnection -HomePath $env:LLM_TEST_HOME -ScriptBlock {{
+    [ordered]@{{
+        mode = $env:LLM_FOUNDATION_CONNECTION_MODE
+        https_matches = $env:HTTPS_PROXY -ceq '{expected}'
+        all_proxy_present = Test-Path Env:ALL_PROXY
+    }} | ConvertTo-Json -Compress
+}}
+""",
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    environment["LLM_TEST_CONNECTION_RUNTIME"] = str(runtime)
+    environment["LLM_TEST_HOME"] = str(home)
+    result = subprocess.run(
+        [
+            executable,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(probe),
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout) == {
+        "mode": "Proxy",
+        "https_matches": True,
+        "all_proxy_present": uses_all_proxy,
+    }
+    assert password not in result.stdout
+    assert username not in result.stdout
+
+
+@pytest.mark.skipif(
+    shutil.which("curl.exe") is None,
+    reason="Windows curl.exe is required",
+)
+@pytest.mark.parametrize(
+    "executable",
+    [
+        value
+        for value in (shutil.which("pwsh"), shutil.which("powershell.exe"))
+        if value
+    ],
+)
+def test_powershell_connection_runtime_fetches_json_with_curl(
+    repo_root, tmp_path, executable
+):
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            payload = b'{"status":"ok"}\n'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *_args):
+            return
+
+    server = http.server.ThreadingHTTPServer(
+        ("127.0.0.1", 0),
+        Handler,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        home = tmp_path / f"curl-home-{Path(executable).stem}"
+        state = home / ".llm-foundation"
+        state.mkdir(parents=True)
+        (state / "connection.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "mode": "Direct",
+                    "proxy": None,
+                }
+            ),
+            encoding="utf-8",
+        )
+        probe = tmp_path / f"curl-probe-{Path(executable).stem}.ps1"
+        probe.write_text(
+            """
+. $env:LLM_TEST_CONNECTION_RUNTIME
+Invoke-WithLlmConnection -HomePath $env:LLM_TEST_HOME -ScriptBlock {
+    $Result = Invoke-LlmJsonGet `
+        -Uri $env:LLM_TEST_URI `
+        -UserAgent 'llm-foundation-test/1' `
+        -TimeoutSeconds 5
+    $Result.status
+}
+""",
+            encoding="utf-8",
+        )
+        environment = os.environ.copy()
+        environment["LLM_TEST_CONNECTION_RUNTIME"] = str(
+            repo_root / "runtime" / "connection.ps1"
+        )
+        environment["LLM_TEST_HOME"] = str(home)
+        environment["LLM_TEST_URI"] = (
+            f"http://127.0.0.1:{server.server_port}/release"
+        )
+        result = subprocess.run(
+            [
+                executable,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(probe),
+            ],
+            env=environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.stdout.strip() == "ok"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def _run_hook(executable, script, home, fixture):
     environment = os.environ.copy()
     environment["CODEX_BASE_HOME_OVERRIDE"] = str(home)
@@ -459,6 +915,8 @@ def test_runtime_has_only_minimal_one_way_hook_and_no_model_defaults(repo_root):
         "utf-8"
     )
     assert "Invoke-RestMethod -Method Get" in hook
+    assert "connection.ps1" in hook
+    assert "Invoke-WithLlmConnection" in hook
     for forbidden in (
         "invoke-restmethod -method post",
         "invoke-webrequest -method post",

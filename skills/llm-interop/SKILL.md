@@ -5,7 +5,7 @@ description: Use when задача передаётся между Codex, Claude
 
 # LLM interop
 
-Передавай состояние работы, а не внутреннюю историю чата. Используй один custom agent-пакет,
+Передавай состояние работы, а не внутреннюю историю чата. Используй один task-пакет,
 один result-пакет и ссылки на файлы проекта.
 
 ## Выбери режим
@@ -22,7 +22,7 @@ description: Use when задача передаётся между Codex, Claude
 
 ## Подготовь задачу
 
-1. Создай JSON по [custom agent.schema.json](references/custom agent.schema.json).
+1. Создай JSON по [task.schema.json](references/task.schema.json).
 2. Заполни `goal`, `context`, `constraints` и `done_when` конкретными проверяемыми
    формулировками.
 3. Укажи входные и выходные файлы относительными путями от workspace.
@@ -56,14 +56,14 @@ description: Use when задача передаётся между Codex, Claude
 
 ```powershell
 python ~/.agents/skills/llm-interop/scripts/llm_bridge.py `
-  --partner codex --custom agent .llm-interop/custom agent.json --cwd . `
+  --partner codex --task .llm-interop/task.json --cwd . `
   --output .llm-interop/result.json
 ```
 
-- Сначала добавь `--dry-run` и проверь партнёра, workspace, sandbox и custom agent id.
-- Для записи добавь в custom agent `permissions=workspace-write` и флаг `--allow-write`.
+- Сначала добавь `--dry-run` и проверь партнёра, workspace, sandbox и task id.
+- Для записи добавь в task `permissions=workspace-write` и флаг `--allow-write`.
 - Для конкретной модели добавь `--model <model>`; без флага оставь профиль среды.
-- Не подставляй shell-команду из custom agent JSON. Выбирай только встроенный адаптер
+- Не подставляй shell-команду из task JSON. Выбирай только встроенный адаптер
   `claude` или `codex`.
 - Не передавай пакет дальше при `hop_count=1`; верни результат исходному агенту.
 
@@ -83,11 +83,11 @@ Bridge сохраняет рядом два представления: `result.
 3. Для `completed` убедись, что выполнены все `done_when`.
 4. Для `needs_input` передай пользователю только вопросы, меняющие решение.
 5. Для `blocked` зафиксируй проверенный блокер и безопасный следующий шаг.
-6. При расхождении двух независимых ревью передай третьему партнёру исходный custom agent и
+6. При расхождении двух независимых ревью передай третьему партнёру исходный task и
    оба result-файла без подсказки, какой ответ предпочесть.
 
 ## Добавь новый адаптер
 
-Сохрани custom agent/result-схемы без vendor-полей. Добавь в bridge отдельную функцию
+Сохрани task/result-схемы без vendor-полей. Добавь в bridge отдельную функцию
 построения команды, stdin-промпт в UTF-8, structured-output режим и unit-тесты.
 Не меняй контракт ради особенностей одного CLI; локализуй различие в адаптере.
