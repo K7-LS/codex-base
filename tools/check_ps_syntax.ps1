@@ -4,6 +4,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$Utf8NoBom = New-Object Text.UTF8Encoding($false)
+[Console]::OutputEncoding = $Utf8NoBom
+$OutputEncoding = $Utf8NoBom
 $failed = $false
 $files = Get-ChildItem -LiteralPath $Root -Recurse -File -Filter '*.ps1'
 foreach ($file in $files) {

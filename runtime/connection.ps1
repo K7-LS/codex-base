@@ -1,4 +1,7 @@
 Set-StrictMode -Version 2.0
+$Utf8NoBom = New-Object Text.UTF8Encoding($false)
+[Console]::OutputEncoding = $Utf8NoBom
+$OutputEncoding = $Utf8NoBom
 
 $script:LlmConnectionEntropy = [Text.Encoding]::UTF8.GetBytes(
     'llm-foundation-connection-v1'

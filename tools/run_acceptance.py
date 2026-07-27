@@ -105,6 +105,9 @@ def _seed(home: Path) -> dict[str, str]:
         path.write_bytes(payload)
     previous = home / ".codex" / "AGENTS.md"
     previous.write_text("# previous managed surface\n", encoding="utf-8")
+    legacy_agent = home / ".codex" / "agents" / "legacy.toml"
+    legacy_agent.parent.mkdir(parents=True)
+    legacy_agent.write_text('name = "legacy"\n', encoding="utf-8")
     local = home / ".agents" / "skills" / "local-personal" / "SKILL.md"
     local.parent.mkdir(parents=True)
     local.write_text("# local skill\n", encoding="utf-8")
@@ -150,6 +153,8 @@ def _integration_case(
         raise AssertionError("Codex install created a Claude runtime path")
     if (home / ".agents" / "skills" / "local-personal").exists():
         raise AssertionError("unknown skill remained in active discovery")
+    if (home / ".codex" / "agents" / "legacy.toml").exists():
+        raise AssertionError("unknown agent remained in active discovery")
 
     agent_files = sorted((home / ".codex" / "agents").glob("*.toml"))
     skill_files = sorted((home / ".agents" / "skills").glob("*/SKILL.md"))
@@ -169,10 +174,11 @@ def _integration_case(
     if inventory.returncode != 0:
         raise AssertionError(inventory.stdout or inventory.stderr)
     inventory_data = json.loads(inventory.stdout)
-    if inventory_data.get("quarantined_unknown") != [
-        ".agents/skills/local-personal"
-    ]:
-        raise AssertionError("unknown-skill inventory differs")
+    if set(inventory_data.get("quarantined_unknown") or []) != {
+        ".agents/skills/local-personal",
+        ".codex/agents/legacy.toml",
+    }:
+        raise AssertionError("unknown discovery inventory differs")
 
     rollback = _foundation_command(
         executable, foundation, "rollback", home
@@ -188,6 +194,12 @@ def _integration_case(
         home / ".agents" / "skills" / "local-personal" / "SKILL.md"
     ).is_file():
         raise AssertionError("unknown skill was not restored")
+    legacy_agent = home / ".codex" / "agents" / "legacy.toml"
+    if (
+        not legacy_agent.is_file()
+        or legacy_agent.read_text(encoding="utf-8") != 'name = "legacy"\n'
+    ):
+        raise AssertionError("unknown agent was not restored")
     if (home / ".agents" / "skills" / "sync-base").exists():
         raise AssertionError("candidate discovery remained after rollback")
     return {

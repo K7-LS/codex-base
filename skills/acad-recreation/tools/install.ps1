@@ -12,6 +12,9 @@
     Comments intentionally ASCII to avoid PS 5.1 cp1251/BOM issues.
 #>
 $ErrorActionPreference = 'Stop'
+$Utf8NoBom = New-Object Text.UTF8Encoding($false)
+[Console]::OutputEncoding = $Utf8NoBom
+$OutputEncoding = $Utf8NoBom
 
 # --- 1. toolkit -> ASCII dir ---
 $asciiDir = 'C:\ProgramData\ORG-acad'

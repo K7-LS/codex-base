@@ -14,15 +14,20 @@ Candidate manifest связывает evidence; evidence связывает sour
 ZIP, package manifest и component lock. Stable promotion сохраняет те же ZIP
 bytes и требует явный `PASS` каждого release-gate.
 
-Не проверено и не разрешено:
+Текущий release checkpoint:
 
-- paid matched A/B на Terra/Sol;
-- изменение текущего `~/.codex`;
-- hub canary;
-- stable GitHub Release и immutable/asset attestation на опубликованном tag;
-- employee rollout;
-- принятые client-version, package acceptance и canary для реализованных
-  `claude-base-v2` и `opencode-base`.
+- immutable releases включены для будущих GitHub Releases, но tag/release ещё
+  не публиковался;
+- первый hub canary пакета `0.1.0` обнаружил дефект Foundation rollback;
+  предыдущая управляемая поверхность и protected data восстановлены, а пакет
+  `0.1.0` запрещён к продвижению;
+- исправленный Foundation `0.2.1` и новый Codex candidate требуют fresh
+  offline acceptance и повторного обратимого canary;
+- paid matched A/B на Terra/Sol владелец не разрешил;
+- stable release и employee rollout остаются заблокированы до всех release
+  gates;
+- принятые client/package/canary для `claude-base-v2` и `opencode-base` пока
+  отсутствуют.
 
 Поэтому `FULL_RELEASE_CODEX` остаётся `NOT_PASS`, а общий program verdict —
 `0/3`.

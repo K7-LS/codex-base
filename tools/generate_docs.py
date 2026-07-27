@@ -65,7 +65,7 @@ def main() -> int:
         for group in ("memory", "chains", "commands")
         for value in cold[group]
     ]
-    capabilities = f"""# Возможности Codex-base 0.1.0
+    capabilities = f"""# Возможности Codex-base
 
 ## Что Codex знает на старте
 
@@ -151,17 +151,23 @@ component lock с embedded-копией. Запускается только Fou
 # Нативный control-skill внутри Codex
 $sync-base
 
+# Найти Foundation, pinned установленным пакетом
+$Foundation = Get-ChildItem `
+  "$env:USERPROFILE\\.codex\\base\\foundation" `
+  -Filter foundation.ps1 -File -Recurse |
+  Select-Object -First 1 -ExpandProperty FullName
+
 # Прямая диагностика
-pwsh -NoProfile -File "$env:USERPROFILE\\.codex\\base\\foundation\\0.1.0\\foundation.ps1" `
+pwsh -NoProfile -File $Foundation `
   doctor -Home $env:USERPROFILE -Target codex `
   -ClientId codex-cli -ClientVersion 0.146.0-alpha.3.1 -Json
 
 # Инвентарь
-pwsh -NoProfile -File "$env:USERPROFILE\\.codex\\base\\foundation\\0.1.0\\foundation.ps1" `
+pwsh -NoProfile -File $Foundation `
   inventory -Home $env:USERPROFILE -Target codex -Json
 
 # Откат последней установки
-pwsh -NoProfile -File "$env:USERPROFILE\\.codex\\base\\foundation\\0.1.0\\foundation.ps1" `
+pwsh -NoProfile -File $Foundation `
   rollback -Home $env:USERPROFILE -Target codex -Json
 ```
 
@@ -197,14 +203,20 @@ Candidate manifest связывает evidence; evidence связывает sour
 ZIP, package manifest и component lock. Stable promotion сохраняет те же ZIP
 bytes и требует явный `PASS` каждого release-gate.
 
-Не проверено и не разрешено:
+Текущий release checkpoint:
 
-- paid matched A/B на Terra/Sol;
-- изменение текущего `~/.codex`;
-- hub canary;
-- stable GitHub Release и immutable/asset attestation на опубликованном tag;
-- employee rollout;
-- нативные реализации `claude-base-v2` и `opencode-base`.
+- immutable releases включены для будущих GitHub Releases, но tag/release ещё
+  не публиковался;
+- первый hub canary пакета `0.1.0` обнаружил дефект Foundation rollback;
+  предыдущая управляемая поверхность и protected data восстановлены, а пакет
+  `0.1.0` запрещён к продвижению;
+- исправленный Foundation `0.2.1` и новый Codex candidate требуют fresh
+  offline acceptance и повторного обратимого canary;
+- paid matched A/B на Terra/Sol владелец не разрешил;
+- stable release и employee rollout остаются заблокированы до всех release
+  gates;
+- принятые client/package/canary для `claude-base-v2` и `opencode-base` пока
+  отсутствуют.
 
 Поэтому `FULL_RELEASE_CODEX` остаётся `NOT_PASS`, а общий program verdict —
 `0/3`.

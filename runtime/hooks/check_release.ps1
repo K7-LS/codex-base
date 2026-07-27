@@ -1,4 +1,7 @@
 $ErrorActionPreference = 'Stop'
+$Utf8NoBom = New-Object Text.UTF8Encoding($false)
+[Console]::OutputEncoding = $Utf8NoBom
+$OutputEncoding = $Utf8NoBom
 $connectionRuntime = Join-Path (
     Split-Path -Parent $PSScriptRoot
 ) 'connection.ps1'
