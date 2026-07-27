@@ -914,7 +914,8 @@ def test_runtime_has_only_minimal_one_way_hook_and_no_model_defaults(repo_root):
     hook = (repo_root / "runtime" / "hooks" / "check_release.ps1").read_text(
         "utf-8"
     )
-    assert "Invoke-RestMethod -Method Get" in hook
+    assert "Invoke-LlmJsonGet" in hook
+    assert "Invoke-RestMethod" not in hook
     assert "connection.ps1" in hook
     assert "Invoke-WithLlmConnection" in hook
     for forbidden in (
