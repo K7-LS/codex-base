@@ -210,10 +210,12 @@ def promote_candidate(
 def create_package_acceptance(
     stable_manifest_path: Path,
     evidence_path: Path,
+    release_verification_path: Path,
     output_path: Path,
 ) -> dict[str, object]:
     stable = _load_json(stable_manifest_path)
     evidence = _load_json(evidence_path)
+    release_verification = _load_json(release_verification_path)
     binding = release_binding_from_manifest(stable)
     if (
         stable.get("schema_version") != 1
@@ -227,8 +229,10 @@ def create_package_acceptance(
         binding,
         require_full_release=True,
     )
-    if evidence.get("RELEASE_INTEGRITY") != "PASS":
-        raise ValueError("release integrity is not PASS")
+    if evidence.get("RELEASE_INTEGRITY") != "PENDING_PUBLICATION":
+        raise ValueError(
+            "pre-publication evidence has an invalid release integrity state"
+        )
     evidence_bytes = evidence_path.read_bytes()
     if _sha256_bytes(evidence_bytes) != stable.get(
         "acceptance_evidence_sha256"
@@ -259,6 +263,45 @@ def create_package_acceptance(
         or len(asset_bytes) != asset.get("bytes")
     ):
         raise ValueError("stable release asset binding differs")
+    source = stable.get("source")
+    repository_url = (
+        str(source.get("repository") or "")
+        if isinstance(source, dict)
+        else ""
+    )
+    expected_repository = repository_url.removeprefix(
+        "https://github.com/"
+    ).rstrip("/")
+    release_state = release_verification.get("release_state")
+    verified_assets = release_verification.get("assets")
+    if (
+        release_verification.get("schema_version") != 1
+        or release_verification.get("repository") != expected_repository
+        or release_verification.get("tag") != stable.get("tag")
+        or release_verification.get("RELEASE_INTEGRITY") != "PASS"
+        or release_verification.get("release_attestation") != "PASS"
+        or release_verification.get("evidence_body_sha256")
+        != evidence_body_sha256(release_verification)
+        or not isinstance(release_state, dict)
+        or release_state
+        != {
+            "draft": False,
+            "prerelease": False,
+            "immutable": True,
+        }
+        or not isinstance(verified_assets, list)
+        or verified_assets
+        != [
+            {
+                "name": asset.get("name"),
+                "sha256": asset.get("sha256"),
+                "bytes": asset.get("bytes"),
+                "attestation": "PASS",
+            }
+        ]
+    ):
+        raise ValueError("post-publication release integrity is not PASS")
+    release_verification_bytes = release_verification_path.read_bytes()
     result = {
         "schema_version": 1,
         "target": "codex",
@@ -274,6 +317,11 @@ def create_package_acceptance(
             "name": evidence_path.name,
             "sha256": _sha256_bytes(evidence_bytes),
             "bytes": len(evidence_bytes),
+        },
+        "release_verification": {
+            "name": release_verification_path.name,
+            "sha256": _sha256_bytes(release_verification_bytes),
+            "bytes": len(release_verification_bytes),
         },
         "immutable_release": True,
         "release_attestation": True,

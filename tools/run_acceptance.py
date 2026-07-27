@@ -216,7 +216,7 @@ def _integration_case(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", default="0.1.0")
+    parser.add_argument("--version", default="0.1.1")
     parser.add_argument("--foundation", required=True, type=Path)
     parser.add_argument("--foundation-evidence", required=True, type=Path)
     args = parser.parse_args(argv)

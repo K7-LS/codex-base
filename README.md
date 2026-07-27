@@ -28,6 +28,7 @@ upload exists.
 ## Build and offline acceptance
 
 ```powershell
+py -3.12 -m pip install pytest PyYAML
 $env:PYTHONPATH = "src"
 py -3.12 -m pytest -q
 py -3.12 .\tools\run_acceptance.py `
@@ -46,17 +47,44 @@ The resulting candidate remains fail-closed:
 - `CODEX_CANARY: NOT_RUN`
 - `FULL_RELEASE_CODEX: NOT_PASS`
 
-Paid matched A/B, a live hub canary, and stable release publication each need
-separate owner approval.
+The owner has authorized exactly one guarded four-call GPT-5.6 Terra
+matched A/B, one live hub canary, push, and immutable release publication.
+They have not run yet. Any A/B repeat or expansion requires new approval.
+
+Review the no-spend plan before the paid run:
+
+```powershell
+py -3.12 .\tools\run_matched_ab.py
+```
 
 After those gates produce final `PASS` evidence, stable assets can be prepared
 without rebuilding the ZIP:
 
 ```powershell
 py -3.12 .\tools\promote_candidate.py `
-  --candidate .\dist\candidate-0.1.0 `
+  --candidate .\dist\candidate-0.1.1 `
   --final-evidence <approved-final-evidence.json> `
-  --output .\dist\stable-0.1.0
+  --output .\dist\stable-0.1.1
 ```
 
 This command does not publish to GitHub.
+
+After immutable publication, the local package is not accepted merely because
+its checksum matches. The verifier requires stable, non-draft, immutable
+GitHub state plus successful release and asset attestations:
+
+```powershell
+py -3.12 .\tools\verify_release.py `
+  --manifest .\dist\stable-0.1.1\release-manifest.json `
+  --asset .\dist\stable-0.1.1\codex-base-0.1.1.zip `
+  --output .\dist\stable-0.1.1\release-verification.json
+
+py -3.12 .\tools\create_package_acceptance.py `
+  --manifest .\dist\stable-0.1.1\release-manifest.json `
+  --evidence .\dist\stable-0.1.1\acceptance-evidence.json `
+  --release-verification .\dist\stable-0.1.1\release-verification.json `
+  --output .\dist\stable-0.1.1\package-acceptance.json
+```
+
+`package-acceptance.json` is created only after publication and is the record
+the employee installer consumes.

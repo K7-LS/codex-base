@@ -181,7 +181,9 @@ pwsh -NoProfile -File $Foundation `
 
 Это оценка статического startup/discovery-контекста, а не биллинг провайдера.
 Matched A/B пока не запускался, поэтому снижение total input по реальным
-запросам ещё не доказано.
+запросам ещё не доказано. Владелец разрешил ровно один guarded-прогон:
+legacy/candidate × «привет»/«что ты умеешь» на GPT-5.6 Terra, low reasoning.
+Повтор или расширение матрицы требует нового разрешения.
 """
     (docs / "INSTALL-AND-NETWORK.md").write_text(
         operations, encoding="utf-8", newline="\n"
@@ -212,7 +214,10 @@ bytes и требует явный `PASS` каждого release-gate.
   `0.1.0` запрещён к продвижению;
 - исправленный Foundation `0.2.1` и новый Codex candidate требуют fresh
   offline acceptance и повторного обратимого canary;
-- paid matched A/B на Terra/Sol владелец не разрешил;
+- ровно четыре matched A/B вызова GPT-5.6 Terra разрешены, но ещё не
+  выполнены; `tools/run_matched_ab.py` по умолчанию работает как dry-run,
+  блокирует tools и останавливает матрицу при tool-event либо
+  `input_tokens > 100000`;
 - stable release и employee rollout остаются заблокированы до всех release
   gates;
 - принятые client/package/canary для `claude-base-v2` и `opencode-base` пока

@@ -54,7 +54,7 @@
   },
   "limitations": [
     "Static tokens are a conservative UTF-8 byte estimate, not provider billing.",
-    "Matched A/B requires separate owner approval and identical client, model, reasoning and prompts."
+    "One four-call Terra matched A/B is owner-authorized; repeat or expansion requires new approval."
   ],
   "method": "UTF-8 bytes for global AGENTS.md plus canonical name|description|installed-path discovery rows; token estimate is ceil(bytes/3)",
   "results": {

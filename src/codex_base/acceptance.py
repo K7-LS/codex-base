@@ -334,8 +334,8 @@ def write_acceptance_evidence(
         "FULL_RELEASE_CODEX": "NOT_PASS",
         "PROGRAM_RELEASE": "0/3",
         "release_permissions": {
-            "paid_matched_ab": "BLOCKED_OWNER_APPROVAL",
-            "hub_canary": "BLOCKED_OWNER_APPROVAL",
+            "paid_matched_ab": "APPROVED_EXACTLY_FOUR_NOT_RUN",
+            "hub_canary": "APPROVED_NOT_RUN",
             "stable_release": "BLOCKED",
         },
         "limitations": [

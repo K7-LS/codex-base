@@ -96,13 +96,48 @@ def _final_evidence(
         "version": str(binding["version"]),
         "release_binding": binding,
         **{gate: "PASS" for gate in REQUIRED_FULL_RELEASE_GATES},
-        "RELEASE_INTEGRITY": "PASS",
+        "RELEASE_INTEGRITY": "PENDING_PUBLICATION",
         "PROGRAM_RELEASE": "1/3",
     }
     if failed_gate:
         evidence[failed_gate] = "NOT_PASS"
     evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
     path.write_bytes(_json_bytes(evidence))
+    return path
+
+
+def _release_verification(
+    path: Path,
+    stable_manifest_path: Path,
+    *,
+    verdict: str = "PASS",
+) -> Path:
+    stable = json.loads(stable_manifest_path.read_text(encoding="utf-8"))
+    asset = stable["asset"]
+    verification = {
+        "schema_version": 1,
+        "repository": "daniileliseev1337/codex-base",
+        "tag": stable["tag"],
+        "release_state": {
+            "draft": False,
+            "prerelease": False,
+            "immutable": True,
+        },
+        "release_attestation": verdict,
+        "assets": [
+            {
+                "name": asset["name"],
+                "sha256": asset["sha256"],
+                "bytes": asset["bytes"],
+                "attestation": verdict,
+            }
+        ],
+        "RELEASE_INTEGRITY": verdict,
+    }
+    verification["evidence_body_sha256"] = evidence_body_sha256(
+        verification
+    )
+    path.write_bytes(_json_bytes(verification))
     return path
 
 
@@ -138,9 +173,14 @@ def test_codex_package_acceptance_matches_employee_installer_contract(
     stable = promote_candidate(candidate, final, tmp_path / "stable")
 
     output = stable.manifest_path.parent / "package-acceptance.json"
+    release_verification = _release_verification(
+        tmp_path / "release-verification.json",
+        stable.manifest_path,
+    )
     acceptance = create_package_acceptance(
         stable.manifest_path,
         stable.evidence_path,
+        release_verification,
         output,
     )
 
@@ -154,9 +194,12 @@ def test_codex_package_acceptance_matches_employee_installer_contract(
     assert acceptance["asset"]["sha256"] == stable.zip_sha256
     assert acceptance["immutable_release"] is True
     assert acceptance["release_attestation"] is True
+    assert acceptance["release_verification"]["sha256"] == hashlib.sha256(
+        release_verification.read_bytes()
+    ).hexdigest()
 
 
-def test_codex_package_acceptance_requires_release_integrity(
+def test_codex_package_acceptance_requires_post_publication_release_integrity(
     repo_root, tmp_path
 ):
     candidate, binding = _candidate(repo_root, tmp_path)
@@ -164,16 +207,18 @@ def test_codex_package_acceptance_requires_release_integrity(
         tmp_path / "final-evidence.json",
         binding,
     )
-    evidence = json.loads(final.read_text(encoding="utf-8"))
-    evidence["RELEASE_INTEGRITY"] = "NOT_PASS"
-    evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
-    final.write_bytes(_json_bytes(evidence))
     stable = promote_candidate(candidate, final, tmp_path / "stable")
+    release_verification = _release_verification(
+        tmp_path / "release-verification.json",
+        stable.manifest_path,
+        verdict="NOT_PASS",
+    )
 
     with pytest.raises(ValueError, match="release integrity"):
         create_package_acceptance(
             stable.manifest_path,
             stable.evidence_path,
+            release_verification,
             stable.manifest_path.parent / "package-acceptance.json",
         )
 

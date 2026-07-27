@@ -111,6 +111,12 @@ def test_acceptance_evidence_is_fail_closed_until_paid_ab_and_canary(
     assert evidence["FULL_RELEASE_CODEX"] == "NOT_PASS"
     assert evidence["PROGRAM_RELEASE"] == "0/3"
     assert evidence["release_permissions"]["stable_release"] == "BLOCKED"
+    assert evidence["release_permissions"]["paid_matched_ab"] == (
+        "APPROVED_EXACTLY_FOUR_NOT_RUN"
+    )
+    assert evidence["release_permissions"]["hub_canary"] == (
+        "APPROVED_NOT_RUN"
+    )
     assert evidence["evidence_body_sha256"] == evidence_body_sha256(
         evidence
     )
