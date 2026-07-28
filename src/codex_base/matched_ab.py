@@ -79,6 +79,7 @@ SAFE_ITEM_TYPE_CATEGORIES = {
     "context_compaction": "workflow",
     "user_message": "protocol",
     "hook_prompt": "protocol",
+    "error": "notice",
 }
 
 
@@ -272,6 +273,19 @@ def inspect_event(event: Any) -> dict[str, Any]:
         if not isinstance(item, dict):
             raise GuardViolation("Codex item event has no item object")
         item_type = item.get("type")
+        if event_type == "item.completed" and item_type == "error":
+            message = item.get("message")
+            if not isinstance(message, str):
+                raise GuardViolation(
+                    "Codex non-fatal error item has no message",
+                    code="invalid_event",
+                )
+            if message.startswith("model rerouted:"):
+                raise GuardViolation(
+                    "Codex model was rerouted",
+                    code="model_rerouted",
+                )
+            return {"non_fatal_error": True}
         if (
             event_type not in SAFE_ITEM_EVENT_TYPES
             or not isinstance(item_type, str)
@@ -347,17 +361,25 @@ def summarize_results(
     for result in results:
         usage = _validated_usage(result.get("usage"))
         digest = str(result.get("result_sha256") or "")
+        non_fatal_error_items = result.get("non_fatal_error_items", 0)
         if (
             len(digest) != 64
             or any(character not in "0123456789abcdef" for character in digest)
         ):
             raise ValueError("matched A/B result digest is invalid")
+        if (
+            not isinstance(non_fatal_error_items, int)
+            or isinstance(non_fatal_error_items, bool)
+            or non_fatal_error_items < 0
+        ):
+            raise ValueError("matched A/B non-fatal error count is invalid")
         safe_runs.append(
             {
                 "variant": str(result["variant"]),
                 "prompt_id": str(result["prompt_id"]),
                 "usage": usage,
                 "result_sha256": digest,
+                "non_fatal_error_items": non_fatal_error_items,
                 "tool_events": 0,
             }
         )
@@ -468,6 +490,7 @@ def summarize_abort(
         "guard_violation",
         "input_token_guard",
         "invalid_event",
+        "model_rerouted",
         "protocol_item_event",
         "timeout",
         "tool_event",
@@ -495,6 +518,7 @@ def summarize_abort(
     for result in completed_results:
         usage = _validated_usage(result.get("usage"))
         result_digest = str(result.get("result_sha256") or "")
+        non_fatal_error_items = result.get("non_fatal_error_items", 0)
         if (
             len(result_digest) != 64
             or any(
@@ -503,12 +527,19 @@ def summarize_abort(
             )
         ):
             raise ValueError("matched A/B abort result digest is invalid")
+        if (
+            not isinstance(non_fatal_error_items, int)
+            or isinstance(non_fatal_error_items, bool)
+            or non_fatal_error_items < 0
+        ):
+            raise ValueError("matched A/B non-fatal error count is invalid")
         safe_completed.append(
             {
                 "variant": str(result["variant"]),
                 "prompt_id": str(result["prompt_id"]),
                 "usage": usage,
                 "result_sha256": result_digest,
+                "non_fatal_error_items": non_fatal_error_items,
                 "tool_events": 0,
             }
         )

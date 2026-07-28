@@ -265,7 +265,7 @@ def _run_one(
     workspace: Path,
     prompt: str,
     timeout_seconds: int,
-) -> tuple[dict[str, int], str]:
+) -> tuple[dict[str, int], str, int]:
     command = build_codex_command(
         codex=codex,
         workspace=workspace,
@@ -300,6 +300,7 @@ def _run_one(
     deadline = time.monotonic() + timeout_seconds
     usage: dict[str, int] | None = None
     final_message: str | None = None
+    non_fatal_error_items = 0
     output_finished = False
     try:
         while not output_finished:
@@ -330,6 +331,8 @@ def _run_one(
                 usage = observation["usage"]
             if "message" in observation:
                 final_message = observation["message"]
+            if observation.get("non_fatal_error") is True:
+                non_fatal_error_items += 1
     except BaseException:
         _terminate(process)
         raise
@@ -361,7 +364,7 @@ def _run_one(
             "Codex A/B call completed without usage or final message",
             code="invalid_event",
         )
-    return usage, response_sha256(final_message)
+    return usage, response_sha256(final_message), non_fatal_error_items
 
 
 def _atomic_write_new(path: Path, value: Any) -> None:
@@ -490,7 +493,11 @@ def main(argv: list[str] | None = None) -> int:
                         if run.variant == "legacy"
                         else candidate_home
                     )
-                    usage, result_digest = _run_one(
+                    (
+                        usage,
+                        result_digest,
+                        non_fatal_error_items,
+                    ) = _run_one(
                         codex=args.codex,
                         home=home,
                         workspace=workspace,
@@ -503,6 +510,9 @@ def main(argv: list[str] | None = None) -> int:
                             "prompt_id": run.prompt_id,
                             "usage": usage,
                             "result_sha256": result_digest,
+                            "non_fatal_error_items": (
+                                non_fatal_error_items
+                            ),
                         }
                     )
             except GuardViolation as error:

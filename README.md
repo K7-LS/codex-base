@@ -47,14 +47,16 @@ The resulting candidate remains fail-closed:
 - `CODEX_CANARY: NOT_RUN`
 - `FULL_RELEASE_CODEX: NOT_PASS`
 
-The one previously authorized guarded GPT-5.6 Terra matched A/B started its
-first call and completed none. The guard stopped on an unexpected `item.*`
-event; retained evidence did not record the exact subtype, usage is absent,
-and `repeat_authorized=false`. The other three calls did not run. Any A/B
-repeat or expansion requires new approval after the hardened runner is bound
-to a reviewed clean release-tooling commit. The runner is not packaged in the
-candidate ZIP, so this hardening does not change the already accepted asset
-bytes.
+The latest owner-authorized guarded GPT-5.6 Terra matched A/B started its first
+call and completed none. Hardened evidence identified `item.completed` with
+the exact-version JSONL item type redacted as unknown. The official
+`rust-v0.146.0-alpha.3.1` source schema proves the only missing enum member is
+the non-fatal `error` item; terminal failures remain top-level `error` or
+`turn.failed`. The runner now counts non-fatal error items without retaining
+their messages and still aborts on model rerouting. The other three calls did
+not run and `repeat_authorized=false`; another A/B attempt requires new owner
+approval. Release tooling is not packaged in the candidate ZIP, so this
+hardening does not change the already accepted asset bytes.
 
 Review the no-spend plan before the paid run:
 

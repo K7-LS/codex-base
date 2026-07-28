@@ -246,6 +246,41 @@ def test_event_guard_redacts_non_string_item_type():
     assert "private-client" not in json.dumps(caught.value.safe_details)
 
 
+def test_event_guard_allows_nonfatal_error_item_without_retaining_message():
+    observation = inspect_event(
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "error",
+                "message": "private non-fatal client warning",
+            },
+        }
+    )
+
+    assert observation == {"non_fatal_error": True}
+    assert "private" not in json.dumps(observation)
+
+
+def test_event_guard_blocks_model_reroute_error_item():
+    with pytest.raises(GuardViolation) as caught:
+        inspect_event(
+            {
+                "type": "item.completed",
+                "item": {
+                    "type": "error",
+                    "message": (
+                        "model rerouted: gpt-5.6-terra -> "
+                        "private-model"
+                    ),
+                },
+            }
+        )
+
+    assert caught.value.code == "model_rerouted"
+    assert caught.value.safe_details is None
+    assert "private-model" not in str(caught.value)
+
+
 def test_event_guard_rejects_more_than_100000_input_tokens():
     with pytest.raises(GuardViolation, match="100000"):
         inspect_event(
@@ -276,12 +311,14 @@ def test_summary_uses_medians_and_never_contains_prompt_text():
             "prompt_id": "hello",
             "usage": usage(80000),
             "result_sha256": hashlib.sha256(b"legacy-hello").hexdigest(),
+            "non_fatal_error_items": 1,
         },
         {
             "variant": "candidate",
             "prompt_id": "hello",
             "usage": usage(30000),
             "result_sha256": hashlib.sha256(b"candidate-hello").hexdigest(),
+            "non_fatal_error_items": 0,
         },
         {
             "variant": "legacy",
@@ -290,6 +327,7 @@ def test_summary_uses_medians_and_never_contains_prompt_text():
             "result_sha256": hashlib.sha256(
                 b"legacy-capabilities"
             ).hexdigest(),
+            "non_fatal_error_items": 1,
         },
         {
             "variant": "candidate",
@@ -298,6 +336,7 @@ def test_summary_uses_medians_and_never_contains_prompt_text():
             "result_sha256": hashlib.sha256(
                 b"candidate-capabilities"
             ).hexdigest(),
+            "non_fatal_error_items": 0,
         },
     ]
 
@@ -321,6 +360,9 @@ def test_summary_uses_medians_and_never_contains_prompt_text():
     assert "привет" not in serialized
     assert "что ты умеешь" not in serialized
     assert all("result_sha256" in result for result in evidence["runs"])
+    assert [
+        result["non_fatal_error_items"] for result in evidence["runs"]
+    ] == [1, 0, 1, 0]
     assert evidence["candidate_package"] == {
         "sha256": "c" * 64,
         "bytes": 123,
@@ -478,6 +520,59 @@ def test_run_one_synthetic_jsonl_propagates_safe_event_details(
     serialized = json.dumps(caught.value.safe_details)
     assert "private-response" not in serialized
     assert "private-prompt" not in serialized
+
+
+def test_run_one_counts_nonfatal_error_items_without_retaining_messages(
+    monkeypatch,
+    tmp_path,
+):
+    home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    home.mkdir()
+    workspace.mkdir()
+    synthetic_stream = "\n".join(
+        [
+            "import json",
+            "events = [",
+            " {'type': 'thread.started'},",
+            " {'type': 'turn.started'},",
+            (
+                " {'type': 'item.completed', 'item': "
+                "{'type': 'error', "
+                "'message': 'private non-fatal client warning'}},"
+            ),
+            (
+                " {'type': 'item.completed', 'item': "
+                "{'type': 'agent_message', 'text': 'safe result'}},"
+            ),
+            (
+                " {'type': 'turn.completed', 'usage': "
+                "{'input_tokens': 10, 'cached_input_tokens': 2, "
+                "'output_tokens': 3, 'reasoning_output_tokens': 0}},"
+            ),
+            "]",
+            "for event in events: print(json.dumps(event), flush=True)",
+        ]
+    )
+    monkeypatch.setattr(
+        matched_ab_runner,
+        "build_codex_command",
+        lambda **kwargs: [sys.executable, "-c", synthetic_stream],
+    )
+
+    usage, result_digest, non_fatal_error_items = (
+        matched_ab_runner._run_one(
+            codex="synthetic-codex",
+            home=home,
+            workspace=workspace,
+            prompt="private-prompt",
+            timeout_seconds=30,
+        )
+    )
+
+    assert usage["input_tokens"] == 10
+    assert result_digest == hashlib.sha256(b"safe result").hexdigest()
+    assert non_fatal_error_items == 1
 
 
 def test_runner_persists_safe_event_diagnostic_in_abort_evidence(
