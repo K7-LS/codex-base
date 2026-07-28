@@ -96,3 +96,14 @@ def test_catalog_metadata_fits_worst_case_discovery_budget(repo_root):
     payload = estimate_discovery_payload(catalog, fake_home)
     assert payload["skill_chars"] <= 7200
     assert payload["agent_chars"] <= 4000
+
+
+def test_skill_development_uses_material_learning_not_session_ritual(repo_root):
+    text = (
+        repo_root / "skills" / "skill-development" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    lowered = text.lower()
+    assert "обновляй скиллы каждую сессию" not in lowered
+    assert "конец сессии — спросил" not in lowered
+    assert "material reusable learning" in lowered
+    assert len(text.split()) <= 500

@@ -3,120 +3,49 @@ name: skill-development
 description: Use when создаётся или изменяется повторно используемый навык.
 ---
 
-# skill-development — 4 правила skill-first (Anthropic)
+# Skill development
 
-## Зачем
+Build reusable skills as small discovery interfaces, not as permanent copies
+of the current conversation. Current-generation models benefit from compact
+principles and details loaded only when the task needs them.
 
-Источник — методичка Anthropic (прислал пользователь 2026-06-01).
-Это **другая ось**, чем `karpathy-guidelines`:
-- karpathy-guidelines = КАК хорошо сделать текущую задачу (тактика момента).
-- skill-development = КАК накапливать активы, чтобы система улучшалась
-  (стратегия: каждая сессия делает следующую умнее).
+## Shape
 
-Оба держим одновременно — не конфликтуют.
+- Frontmatter says **when** to load the skill.
+- `SKILL.md` gives the shortest useful **how** and the non-obvious choices.
+- `tools/` holds deterministic scripts and templates.
+- `references/` holds detailed material loaded only when needed.
+- One high-fidelity reference is usually better than several narrow examples.
 
-## Правило 1. Промть скиллы, а не пользователя
+Prefer 3–5 focused, composable skills to a monolith. Give each rule, script, or
+reference one canonical home; other skills point to that home instead of
+copying it.
 
-80% задач повторяются. Промт в чате одноразовый — умирает с сессией. Скилл
-живёт в файле и подтягивается сам.
-- Заметил, что пользователь **2-й раз** объясняет то же (тон/формат/процесс)
-  → остановись и предложи: «Это уже второй раз. Оформим как скилл `<имя>`?»
-- Не жди просьбы — предлагай проактивно.
-- Скилл выбирается по **`description`**, не по имени. Формулируй точно
-  «когда брать этот скилл» — расплывчатое описание = не подцепится.
+## Workflow
 
-## Правило 2. Скилл — три слоя, а не один промт
+1. Search the existing catalog or project graph before creating another asset.
+2. Define the behavior or decision the skill must improve.
+3. For behavior-shaping changes, capture a failing scenario or deterministic
+   contract before editing.
+4. Make the smallest change that resolves the observed gap. Put repeatable
+   transformations in code.
+5. Verify discovery metadata, referenced paths, and the target scenario.
 
-| Слой | Что | Антипаттерн |
-|---|---|---|
-| 1. Description | *когда* брать скилл | размыто → не активируется |
-| 2. Instructions | *как* выполнить, по шагам | остановиться здесь (это не всё) |
-| 3. **Tools** | *чем*: скрипты, шаблоны, референсы, примеры | оставить пустым (сюда не доходят 90%) |
+## When to evolve a skill
 
-Антипаттерн: красивый детальный промт + убогие tools без документации.
-Anthropic: компактный SKILL.md + серьёзные инвестиции в `tools/`.
+Update a skill when work reveals material reusable learning: a repeated user
+correction, a stable project invariant, a missing decision boundary, or a
+deterministic operation worth encoding. Ordinary session details stay in the
+task or project state; they do not trigger ritual skill maintenance.
 
-## Правило 3. Композиция, а не монолит
+Keep strict language for genuinely high-impact boundaries such as privacy,
+credentials, provider policy, destructive actions, and irreversible release
+steps. Use principles and model judgment for ordinary implementation choices.
 
-- Не строй гигант, который «делает всё». Разбивай на **3-5 фокус-скиллов**,
-  каждый делает ОДНО.
-- Оркестрацию между ними бери на себя.
-- Скилл разросся → предложи рефакторинг на узкие.
+## Review
 
-Плохо: `content-creation` (research+copy+SEO+формат внутри).
-Хорошо: `research` · `draft` · `headlines` — каждый тестируется отдельно.
-
-## Правило 4. Обновляй скиллы каждую сессию
-
-В конце каждой сессии, где использовали (или могли) скилл, спроси себя:
-> «Что из этой сессии забрать в скилл навсегда, а что было разовой правкой?»
-
-Алгоритм:
-1. Просмотри переписку после применения скилла.
-2. Найди что пользователь правил руками / объяснял повторно.
-3. Предложи конкретные правки в `SKILL.md` или `tools/`.
-4. Пользователь принимает нужное — ты вносишь.
-
-## Сквозной принцип: можно кодом — делай кодом
-
-Повторяемая детерминированная логика → скрипт в `tools/`, **вызывай его**,
-не переписывай каждый раз. AI-генерация кода заново = тысячи токенов +
-нестабильно. Скрипт в tools/ = стабильно, повторяемо, 0 токенов на код.
-
-Правило: повторяемая логика → `tools/`. Творческая/контекстная → модель.
-
-## Наш стандарт структуры скилла
-
-```
-~/.agents/skills/<имя>/
-├── SKILL.md       # слои 1-2 (description + instructions)
-├── tools/         # слой 3: *.py / *.sh / template.md / *.json
-└── examples/      # few-shot: эталонные примеры вывода
-```
-
-**Стандарт для НОВЫХ скиллов:** заполнять все 3 слоя сразу (где применимо).
-**Существующие скиллы:** мигрировать инкрементально при следующем касании
-(НЕ массовый рефактор — Karpathy #3, не трогать рабочее без причины).
-Скрипты в корне скилла → переносить в `tools/` когда и так правим скилл.
-
-## Два правила переиспользования (2026-06-09, после аудита базы)
-
-**Query-before-build.** Перед созданием ЛЮБОГО нового инструмента/скрипта/скилла/агента —
-`graphify query "есть ли у нас инструмент для <задача>"` по графу базы. Граф видит общий слой
-И все блоки (`blocks/`) — находка чужого блока лучше дубля. Нашёл похожее → улучшай его,
-не строй параллельный.
-
-**Один дом, остальные ссылаются.** У каждого правила/рецепта/скрипта ровно один файл-дом;
-агенты, chains, блоки — ССЫЛАЮТСЯ на него (Required reading), не копируют содержимое.
-Копия в теле агента не обновится никогда — починка в доме разъезжается git'ом всем
-автоматически, починка копии — никому. Увидел копипасту правил между файлами → сведи
-к ссылке при следующем касании.
-
-**Гравитация блоков:** инструмент из `blocks/<x>/`, понадобившийся второму блоку или
-общему слою → переезжает в общий `skills/` (с записью в CHANGELOG). Блоки копят
-специфичное, общий слой — универсальное.
-
-## Чек-лист поведения
-
-- [ ] Повторяющаяся инструкция от пользователя → предложил скилл (Пр.1)
-- [ ] Создавая скилл — заполнил 3 слоя, особенно `tools/` (Пр.2)
-- [ ] Точный `description` «когда брать» (Пр.1+2)
-- [ ] Не монолит — 3-5 фокус-скиллов, оркестрирую сам (Пр.3)
-- [ ] Конец сессии — спросил «что забрать в скилл навсегда?» (Пр.4)
-- [ ] Повторяемую логику вынес в `tools/`, не генерирую заново (сквозной)
-- [ ] Перед новым инструментом — graphify query на повтор (query-before-build)
-- [ ] Правила не копировал между файлами — ссылка на файл-дом
-
-## Связь с другими скиллами
-
-- `karpathy-guidelines` — параллельная ось (качество исполнения). Держим оба.
-- `superpowers:writing-skills` + `anthropic-skills:skill-creator` —
-  инструменты ИСПОЛНЕНИЯ (как технически писать/тестировать скилл).
-  skill-development — наши ПРИНЦИПЫ. Принципы → исполнение этими инструментами.
-- `chains-pattern`, `structured-artifacts` — композиция на уровне pipeline
-  (Правило 3 на макроуровне).
-
-## Атрибуция
-4 правила — методичка Anthropic, прислана пользователем 2026-06-01.
-Адаптировано под нашу базу (связь с karpathy-guidelines, наш стандарт
-структуры, инкрементальная миграция вместо массового рефактора).
+- The description contains triggers, not a summary of the procedure.
+- The main file stays concise and project-specific.
+- Detailed guidance loads progressively.
+- Examples do not fence the solution space.
+- Tests or scenarios demonstrate that the material change helps.
