@@ -515,6 +515,7 @@ def main(argv: list[str] | None = None) -> int:
                     candidate_surface_sha256=surface_hashes["candidate"],
                     candidate_package_sha256=package_sha256,
                     candidate_package_bytes=package_bytes,
+                    stop_event=error.safe_details,
                 )
                 _atomic_write_new(args.output.resolve(), evidence)
                 print(

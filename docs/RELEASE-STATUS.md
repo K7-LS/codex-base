@@ -21,12 +21,17 @@ bytes и требует явный `PASS` каждого release-gate.
 - первый hub canary пакета `0.1.0` обнаружил дефект Foundation rollback;
   предыдущая управляемая поверхность и protected data восстановлены, а пакет
   `0.1.0` запрещён к продвижению;
-- исправленный Foundation `0.2.1` и новый Codex candidate требуют fresh
-  offline acceptance и повторного обратимого canary;
-- ровно четыре matched A/B вызова GPT-5.6 Terra разрешены, но ещё не
-  выполнены; `tools/run_matched_ab.py` по умолчанию работает как dry-run,
-  блокирует tools и останавливает матрицу при tool-event либо
-  `input_tokens > 100000`;
+- исправленный Foundation `0.2.1` и текущий Codex candidate прошли offline
+  acceptance, но provider/live canary текущих байтов ещё отсутствует;
+- ранее разрешённая четырёхвызовная matched A/B матрица начала первый вызов,
+  завершила `0` и остановилась на прежней общей метке `tool_event`; offline
+  разбор доказал только семейство `item.*`, потому что runner не сохранял
+  subtype. Остальные вызовы не выполнялись, `repeat_authorized=false`;
+- runner теперь сохраняет только whitelist `event_type`/`item_type`/category
+  и различает tool/workflow/protocol/unknown, не сохраняя payload. Эти
+  release-tooling файлы не входят в candidate ZIP, поэтому accepted bytes не
+  изменились. До возможного повтора нужен reviewed clean commit runner-а и
+  новое явное разрешение владельца;
 - stable release и employee rollout остаются заблокированы до всех release
   gates;
 - принятые client/package/canary для `claude-base-v2` и `opencode-base` пока

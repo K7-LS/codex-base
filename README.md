@@ -47,9 +47,14 @@ The resulting candidate remains fail-closed:
 - `CODEX_CANARY: NOT_RUN`
 - `FULL_RELEASE_CODEX: NOT_PASS`
 
-The owner has authorized exactly one guarded four-call GPT-5.6 Terra
-matched A/B, one live hub canary, push, and immutable release publication.
-They have not run yet. Any A/B repeat or expansion requires new approval.
+The one previously authorized guarded GPT-5.6 Terra matched A/B started its
+first call and completed none. The guard stopped on an unexpected `item.*`
+event; retained evidence did not record the exact subtype, usage is absent,
+and `repeat_authorized=false`. The other three calls did not run. Any A/B
+repeat or expansion requires new approval after the hardened runner is bound
+to a reviewed clean release-tooling commit. The runner is not packaged in the
+candidate ZIP, so this hardening does not change the already accepted asset
+bytes.
 
 Review the no-spend plan before the paid run:
 

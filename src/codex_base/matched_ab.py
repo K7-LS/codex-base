@@ -53,6 +53,72 @@ FAIL_CLOSED_CONFIG_OVERRIDES = (
     'otel.metrics_exporter="none"',
     "otel.log_user_prompt=false",
 )
+SAFE_ITEM_EVENT_TYPES = {
+    "item.started",
+    "item.updated",
+    "item.completed",
+}
+SAFE_ITEM_TYPE_CATEGORIES = {
+    "agent_message": "message",
+    "reasoning": "reasoning",
+    "command_execution": "tool",
+    "file_change": "tool",
+    "mcp_tool_call": "tool",
+    "dynamic_tool_call": "tool",
+    "web_search": "tool",
+    "image_view": "tool",
+    "image_generation": "tool",
+    "collab_tool_call": "tool",
+    "collab_agent_tool_call": "tool",
+    "sleep": "tool",
+    "todo_list": "workflow",
+    "plan": "workflow",
+    "sub_agent_activity": "workflow",
+    "entered_review_mode": "workflow",
+    "exited_review_mode": "workflow",
+    "context_compaction": "workflow",
+    "user_message": "protocol",
+    "hook_prompt": "protocol",
+}
+
+
+def _privacy_safe_item_event(
+    event_type: Any,
+    item_type: Any,
+) -> dict[str, str]:
+    if (
+        not isinstance(event_type, str)
+        or event_type not in SAFE_ITEM_EVENT_TYPES
+    ):
+        return {
+            "event_type": "item.unknown",
+            "item_type": "unrecognized",
+            "category": "unknown",
+        }
+    category = (
+        SAFE_ITEM_TYPE_CATEGORIES.get(item_type)
+        if isinstance(item_type, str)
+        else None
+    )
+    if category is None:
+        return {
+            "event_type": event_type,
+            "item_type": "unrecognized",
+            "category": "unknown",
+        }
+    return {
+        "event_type": event_type,
+        "item_type": item_type,
+        "category": category,
+    }
+
+
+def _failure_code_for_item_category(category: str) -> str:
+    return {
+        "tool": "tool_event",
+        "workflow": "workflow_event",
+        "protocol": "protocol_item_event",
+    }.get(category, "unexpected_item_event")
 
 
 class GuardViolation(RuntimeError):
@@ -63,9 +129,11 @@ class GuardViolation(RuntimeError):
         message: str,
         *,
         code: str = "guard_violation",
+        safe_details: dict[str, str] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
+        self.safe_details = safe_details
 
 
 @dataclass(frozen=True)
@@ -204,10 +272,22 @@ def inspect_event(event: Any) -> dict[str, Any]:
         if not isinstance(item, dict):
             raise GuardViolation("Codex item event has no item object")
         item_type = item.get("type")
-        if item_type not in {"agent_message", "reasoning"}:
+        if (
+            event_type not in SAFE_ITEM_EVENT_TYPES
+            or not isinstance(item_type, str)
+            or item_type not in {"agent_message", "reasoning"}
+        ):
+            safe_details = _privacy_safe_item_event(
+                event_type,
+                item_type,
+            )
+            failure_code = _failure_code_for_item_category(
+                safe_details["category"]
+            )
             raise GuardViolation(
-                "tool or workflow event detected; stop the paid matrix",
-                code="tool_event",
+                "unexpected item event detected; stop the paid matrix",
+                code=failure_code,
+                safe_details=safe_details,
             )
         if (
             event_type == "item.completed"
@@ -366,17 +446,33 @@ def summarize_abort(
     candidate_surface_sha256: str,
     candidate_package_sha256: str,
     candidate_package_bytes: int,
+    stop_event: Any = None,
 ) -> dict[str, Any]:
     """Create a PII-free terminal report after a guarded paid-matrix stop."""
 
+    privacy_safe_stop_event = (
+        _privacy_safe_item_event(
+            stop_event.get("event_type"),
+            stop_event.get("item_type"),
+        )
+        if isinstance(stop_event, dict)
+        else None
+    )
+    if privacy_safe_stop_event is not None:
+        failure_code = _failure_code_for_item_category(
+            privacy_safe_stop_event["category"]
+        )
     allowed_failure_codes = {
         "call_failed",
         "feature_preflight",
         "guard_violation",
         "input_token_guard",
         "invalid_event",
+        "protocol_item_event",
         "timeout",
         "tool_event",
+        "unexpected_item_event",
+        "workflow_event",
     }
     if failure_code not in allowed_failure_codes:
         failure_code = "guard_violation"
@@ -457,6 +553,8 @@ def summarize_abort(
             "error_text_included": False,
         },
     }
+    if privacy_safe_stop_event is not None:
+        evidence["stop_event"] = privacy_safe_stop_event
     evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
     return evidence
 
