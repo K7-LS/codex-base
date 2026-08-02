@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import zipfile
@@ -364,6 +365,98 @@ def test_sync_powershell_selects_latest_stable_semver(
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip() == "codex-v1.10.0"
+
+@pytest.mark.parametrize("executable", POWERSHELLS)
+def test_sync_powershell_check_prints_selected_release(
+    repo_root, executable, tmp_path
+):
+    script = (
+        repo_root
+        / "control-skills"
+        / "sync-base"
+        / "tools"
+        / "sync_base.ps1"
+    )
+    policy = (
+        repo_root
+        / "control-skills"
+        / "sync-base"
+        / "sync-policy.json"
+    )
+    home = tmp_path / "home"
+    runtime = home / ".codex" / "base" / "runtime" / "connection.ps1"
+    runtime.parent.mkdir(parents=True)
+    runtime.write_text(
+        "function Invoke-WithLlmConnection {\n"
+        "  param([scriptblock]$ScriptBlock, [string]$HomePath)\n"
+        "  & $ScriptBlock\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "gh.cmd").write_text(
+        "@echo off\r\n"
+        'echo [{"tagName":"codex-v1.10.0","isDraft":false,'
+        '"isPrerelease":false}]\r\n',
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    environment["PATH"] = str(bin_dir) + os.pathsep + environment["PATH"]
+
+    result = subprocess.run(
+        [
+            executable,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script),
+            "-PolicyPath",
+            str(policy),
+            "-TargetHome",
+            str(home),
+            "-Check",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=environment,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "codex-v1.10.0"
+
+    active = home / ".llm-foundation" / "state" / "codex" / "active.json"
+    active.parent.mkdir(parents=True)
+    active.write_text(
+        json.dumps({"target": "codex", "release_version": "1.11.0"}),
+        encoding="utf-8",
+    )
+    no_downgrade = subprocess.run(
+        [
+            executable,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script),
+            "-PolicyPath",
+            str(policy),
+            "-TargetHome",
+            str(home),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=environment,
+    )
+    assert no_downgrade.returncode == 0, no_downgrade.stdout + no_downgrade.stderr
+    assert no_downgrade.stdout.strip() == (
+        "No newer stable release: installed 1.11.0; latest is codex-v1.10.0."
+    )
 
 
 @pytest.mark.parametrize("executable", POWERSHELLS)
