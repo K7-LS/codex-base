@@ -188,6 +188,32 @@ function Get-LlmLatestStableTag {
     return Select-LlmStableRelease -Releases $releases
 }
 
+function Get-LlmInstalledReleaseVersion {
+    $activePath = Join-Path (
+        [IO.Path]::GetFullPath($TargetHome)
+    ) (
+        '.llm-foundation\state\' +
+        [string]$script:LlmSyncPolicy.target +
+        '\active.json'
+    )
+    if (-not (Test-Path -LiteralPath $activePath -PathType Leaf)) {
+        return $null
+    }
+    try {
+        $active = Get-Content -LiteralPath $activePath -Raw -Encoding UTF8 |
+            ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        throw 'Installed Foundation state JSON is invalid.'
+    }
+    $version = [string]$active.release_version
+    if ([string]$active.target -cne [string]$script:LlmSyncPolicy.target -or
+        $version -notmatch '^\d+\.\d+\.\d+$') {
+        throw 'Installed Foundation state contract differs.'
+    }
+    return $version
+}
+
 function Read-LlmZipEntryBytes {
     param(
         [Parameter(Mandatory = $true)]$Archive,
@@ -630,7 +656,19 @@ function Invoke-LlmSyncMain {
         }
     if ($Check) {
         Write-Output $tag
-        return 0
+        return
+    }
+    $installedVersion = Get-LlmInstalledReleaseVersion
+    $latestVersion = $tag.Substring(
+        ([string]$script:LlmSyncPolicy.tag_prefix).Length
+    )
+    if (-not [string]::IsNullOrWhiteSpace($installedVersion) -and
+        [version]$installedVersion -ge [version]$latestVersion) {
+        Write-Output (
+            'No newer stable release: installed ' + $installedVersion +
+            '; latest is ' + $tag + '.'
+        )
+        return
     }
 
     $temporary = Join-Path ([IO.Path]::GetTempPath()) (
@@ -700,7 +738,7 @@ function Invoke-LlmSyncMain {
             [string]$script:LlmSyncPolicy.target +
             '-base ' + $tag + ' installed and verified.'
         )
-        return 0
+        return
     }
     finally {
         if (Test-Path -LiteralPath $temporary -PathType Container) {
@@ -716,7 +754,8 @@ if ($LibraryMode) {
 
 try {
     $script:LlmSyncPolicy = Get-LlmSyncPolicy -Path $PolicyPath
-    exit (Invoke-LlmSyncMain)
+    Invoke-LlmSyncMain
+    exit 0
 }
 catch {
     [Console]::Error.WriteLine('BLOCKED: ' + $_.Exception.Message)
