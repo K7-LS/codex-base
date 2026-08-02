@@ -474,6 +474,11 @@ def _build_release_from_export(
         }
         for name, payload in sorted(entries.items())
     ]
+    individually_managed = sorted(
+        name
+        for name in entries
+        if name.startswith((".agents/skills/", ".codex/agents/"))
+    )
     package_manifest = {
         "schema_version": 1,
         "target": "codex",
@@ -485,19 +490,20 @@ def _build_release_from_export(
         "foundation_engine_version": foundation_version,
         "managed_surface": {
             "exact_directories": [
-                ".agents/skills",
-                ".codex/agents",
                 ".codex/base/cold",
                 ".codex/base/foundation",
                 ".codex/base/runtime",
             ],
-            "replace_files": [
-                ".codex/AGENTS.md",
-                ".codex/base/VERSION",
-                ".codex/base/components.lock.json",
-                ".codex/config.toml",
-                ".codex/hooks.json",
-            ],
+            "replace_files": sorted(
+                individually_managed
+                + [
+                    ".codex/AGENTS.md",
+                    ".codex/base/VERSION",
+                    ".codex/base/components.lock.json",
+                    ".codex/hooks.json",
+                ]
+            ),
+            "merge_toml_files": [".codex/config.toml"],
             "preserved_paths": [
                 ".codex/archived_sessions",
                 ".codex/auth.json",

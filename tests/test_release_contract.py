@@ -150,22 +150,30 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
             "supported_version": SUPPORTED_CODEX_CLIENT,
         }
         assert "supported_codex_client" not in package_manifest
-        assert package_manifest["managed_surface"] == {
-            "exact_directories": [
-                ".agents/skills",
-                ".codex/agents",
-                ".codex/base/cold",
-                ".codex/base/foundation",
-                ".codex/base/runtime",
-            ],
-            "replace_files": [
-                ".codex/AGENTS.md",
-                ".codex/base/VERSION",
-                ".codex/base/components.lock.json",
-                ".codex/config.toml",
-                ".codex/hooks.json",
-            ],
-            "preserved_paths": [
+        managed_surface = package_manifest["managed_surface"]
+        assert managed_surface["exact_directories"] == [
+            ".codex/base/cold",
+            ".codex/base/foundation",
+            ".codex/base/runtime",
+        ]
+        assert managed_surface["merge_toml_files"] == [
+            ".codex/config.toml"
+        ]
+        individually_managed = {
+            name
+            for name in names
+            if name.startswith((".agents/skills/", ".codex/agents/"))
+        }
+        assert set(managed_surface["replace_files"]) == individually_managed | {
+            ".codex/AGENTS.md",
+            ".codex/base/VERSION",
+            ".codex/base/components.lock.json",
+            ".codex/hooks.json",
+        }
+        assert managed_surface["replace_files"] == sorted(
+            managed_surface["replace_files"]
+        )
+        assert managed_surface["preserved_paths"] == [
                 ".codex/archived_sessions",
                 ".codex/auth.json",
                 ".codex/browser",
@@ -175,8 +183,7 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
                 ".codex/sessions",
                 ".codex/state",
                 ".codex/state.sqlite",
-            ],
-        }
+            ]
         assert package_manifest["sync_policy"] == {
             "direction": "hub-to-consumer",
             "consumer_feedback_upload": False,

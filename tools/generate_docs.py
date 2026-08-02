@@ -107,18 +107,18 @@ token-дисциплина, lazy dependency policy и one-way sync. WARM discove
 ## Управляемая поверхность
 
 - `~/.codex/AGENTS.md`
-- `~/.codex/config.toml`
+- `~/.codex/config.toml` — слияние обязательных ключей без удаления локальных секций
 - `~/.codex/hooks.json`
-- `~/.codex/agents/` — exact directory, 16 TOML-агентов
-- `~/.agents/skills/` — exact directory, 37 capability-skills + `$sync-base`
+- 16 файлов в `~/.codex/agents/`; соседние локальные агенты сохраняются
+- 37 capability-skills + `$sync-base` в `~/.agents/skills/`; соседние локальные skills сохраняются
 - `~/.codex/base/cold/`
 - `~/.codex/base/runtime/`
 - `~/.codex/base/foundation/`
 - `~/.codex/base/VERSION` и `components.lock.json`
 
-Неизвестные старые agents/skills включаются в полный snapshot, перечисляются
-как `quarantined_unknown`, удаляются из active discovery и возвращаются
-rollback'ом.
+Foundation заменяет только перечисленные package-owned agents/skills. Неизвестные
+локальные соседи не удаляются и не попадают в `quarantined_unknown`; rollback
+возвращает прежние версии package-owned файлов и исходный `config.toml`.
 
 ## Что не изменяется
 
