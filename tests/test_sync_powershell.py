@@ -38,6 +38,7 @@ def _write_verified_release_fixture(
     destination: Path,
     *,
     unsafe_zip_path: bool = False,
+    release_integrity: str = "PASS",
 ) -> tuple[Path, str]:
     destination.mkdir()
     version = "1.2.3"
@@ -164,6 +165,7 @@ def _write_verified_release_fixture(
         "PROGRAM_RELEASE": "1/3",
         "release_binding": binding,
     }
+    evidence["RELEASE_INTEGRITY"] = release_integrity
     evidence_bytes = _json_bytes(evidence)
     (destination / "acceptance-evidence.json").write_bytes(
         evidence_bytes
@@ -264,7 +266,6 @@ def test_sync_powershell_runtime_is_target_neutral_and_policy_driven(
                 "MATCHED_AB",
                 "CODEX_CANARY",
                 "FULL_RELEASE_CODEX",
-                "RELEASE_INTEGRITY",
             ],
             "program_release": "1/3",
         },
@@ -565,6 +566,41 @@ def test_sync_powershell_accepts_a_fully_bound_release_fixture(
 ):
     release_dir, tag = _write_verified_release_fixture(
         tmp_path / "release"
+    )
+    script = (
+        repo_root
+        / "control-skills"
+        / "sync-base"
+        / "tools"
+        / "sync_base.ps1"
+    )
+    policy = (
+        repo_root
+        / "control-skills"
+        / "sync-base"
+        / "sync-policy.json"
+    )
+    result = _run_library_probe(
+        executable,
+        script,
+        policy,
+        (
+            f"$Verified = Assert-LlmReleaseFiles "
+            f"-Directory '{release_dir}' -Tag '{tag}'; "
+            "$Verified.client_version"
+        ),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "0.146.0-alpha.3.1"
+
+
+@pytest.mark.parametrize("executable", POWERSHELLS)
+def test_sync_powershell_accepts_prepublication_evidence_after_gh_verification(
+    repo_root, executable, tmp_path
+):
+    release_dir, tag = _write_verified_release_fixture(
+        tmp_path / "release",
+        release_integrity="PENDING_PUBLICATION",
     )
     script = (
         repo_root
