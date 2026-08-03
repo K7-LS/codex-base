@@ -164,6 +164,29 @@ def test_final_evidence_is_composed_only_from_bound_pass_evidence():
     }
 
 
+def test_legacy_sync_bootstrap_declares_consumer_verified_integrity_contract():
+    binding = _binding()
+
+    final = compose_final_evidence(
+        candidate=_candidate(binding),
+        matched_ab=_matched(binding),
+        canary=_canary(binding),
+        legacy_sync_bootstrap=True,
+    )
+
+    assert final["RELEASE_INTEGRITY"] == "PASS"
+    assert final["release_integrity_contract"] == {
+        "mode": "CONSUMER_VERIFIED_BEFORE_EVIDENCE",
+        "legacy_updater": "codex-v0.1.1",
+        "required_checks": [
+            "gh release verify",
+            "gh release verify-asset",
+            "gh attestation verify",
+        ],
+    }
+    assert final["evidence_body_sha256"] == evidence_body_sha256(final)
+
+
 def test_final_evidence_accepts_zero_call_inheritance_for_equal_model_surface():
     binding = _binding()
     matched = _inherited_matched(binding)

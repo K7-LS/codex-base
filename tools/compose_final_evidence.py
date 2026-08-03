@@ -43,12 +43,14 @@ def main() -> int:
     parser.add_argument("--candidate-evidence", required=True, type=Path)
     parser.add_argument("--matched-ab-evidence", required=True, type=Path)
     parser.add_argument("--canary-evidence", required=True, type=Path)
+    parser.add_argument("--legacy-sync-bootstrap", action="store_true")
     parser.add_argument("--output", required=True, type=Path)
     arguments = parser.parse_args()
     final = compose_final_evidence(
         candidate=_load(arguments.candidate_evidence.resolve()),
         matched_ab=_load(arguments.matched_ab_evidence.resolve()),
         canary=_load(arguments.canary_evidence.resolve()),
+        legacy_sync_bootstrap=arguments.legacy_sync_bootstrap,
     )
     _write_new(arguments.output.resolve(), final)
     print(

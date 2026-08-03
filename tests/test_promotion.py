@@ -89,6 +89,7 @@ def _final_evidence(
     binding: dict[str, object],
     *,
     failed_gate: str | None = None,
+    legacy_sync_bootstrap: bool = False,
 ) -> Path:
     evidence = {
         "schema_version": 1,
@@ -96,9 +97,21 @@ def _final_evidence(
         "version": str(binding["version"]),
         "release_binding": binding,
         **{gate: "PASS" for gate in REQUIRED_FULL_RELEASE_GATES},
-        "RELEASE_INTEGRITY": "PENDING_PUBLICATION",
+        "RELEASE_INTEGRITY": (
+            "PASS" if legacy_sync_bootstrap else "PENDING_PUBLICATION"
+        ),
         "PROGRAM_RELEASE": "1/3",
     }
+    if legacy_sync_bootstrap:
+        evidence["release_integrity_contract"] = {
+            "mode": "CONSUMER_VERIFIED_BEFORE_EVIDENCE",
+            "legacy_updater": "codex-v0.1.1",
+            "required_checks": [
+                "gh release verify",
+                "gh release verify-asset",
+                "gh attestation verify",
+            ],
+        }
     if failed_gate:
         evidence[failed_gate] = "NOT_PASS"
     evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
@@ -197,6 +210,59 @@ def test_codex_package_acceptance_matches_employee_installer_contract(
     assert acceptance["release_verification"]["sha256"] == hashlib.sha256(
         release_verification.read_bytes()
     ).hexdigest()
+
+
+def test_package_acceptance_accepts_verified_legacy_sync_bootstrap_contract(
+    repo_root, tmp_path
+):
+    candidate, binding = _candidate(repo_root, tmp_path)
+    final = _final_evidence(
+        tmp_path / "final-evidence.json",
+        binding,
+        legacy_sync_bootstrap=True,
+    )
+    stable = promote_candidate(candidate, final, tmp_path / "stable")
+    release_verification = _release_verification(
+        tmp_path / "release-verification.json",
+        stable.manifest_path,
+    )
+
+    acceptance = create_package_acceptance(
+        stable.manifest_path,
+        stable.evidence_path,
+        release_verification,
+        stable.manifest_path.parent / "package-acceptance.json",
+    )
+
+    assert acceptance["package_acceptance"] == "PASS"
+
+
+def test_package_acceptance_rejects_integrity_pass_without_bootstrap_contract(
+    repo_root, tmp_path
+):
+    candidate, binding = _candidate(repo_root, tmp_path)
+    final = _final_evidence(
+        tmp_path / "final-evidence.json",
+        binding,
+        legacy_sync_bootstrap=True,
+    )
+    evidence = json.loads(final.read_text(encoding="utf-8"))
+    evidence.pop("release_integrity_contract")
+    evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
+    final.write_bytes(_json_bytes(evidence))
+    stable = promote_candidate(candidate, final, tmp_path / "stable")
+    release_verification = _release_verification(
+        tmp_path / "release-verification.json",
+        stable.manifest_path,
+    )
+
+    with pytest.raises(ValueError, match="release integrity state"):
+        create_package_acceptance(
+            stable.manifest_path,
+            stable.evidence_path,
+            release_verification,
+            stable.manifest_path.parent / "package-acceptance.json",
+        )
 
 
 def test_codex_package_acceptance_requires_post_publication_release_integrity(

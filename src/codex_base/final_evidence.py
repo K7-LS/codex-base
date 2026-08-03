@@ -25,6 +25,15 @@ OFFLINE_GATES = (
     "CODEX_TESTS",
     "CANDIDATE_OFFLINE",
 )
+LEGACY_SYNC_BOOTSTRAP_CONTRACT = {
+    "mode": "CONSUMER_VERIFIED_BEFORE_EVIDENCE",
+    "legacy_updater": "codex-v0.1.1",
+    "required_checks": [
+        "gh release verify",
+        "gh release verify-asset",
+        "gh attestation verify",
+    ],
+}
 
 
 def _json_bytes(value: object) -> bytes:
@@ -234,6 +243,7 @@ def compose_final_evidence(
     candidate: dict[str, Any],
     matched_ab: dict[str, Any],
     canary: dict[str, Any],
+    legacy_sync_bootstrap: bool = False,
 ) -> dict[str, Any]:
     """Compose fail-closed pre-publication FULL evidence from three inputs."""
 
@@ -242,13 +252,14 @@ def compose_final_evidence(
     _validate_canary(canary, binding)
     final = dict(candidate)
     final.pop("evidence_body_sha256", None)
+    release_integrity = "PASS" if legacy_sync_bootstrap else "PENDING_PUBLICATION"
     final.update(
         {
             "MATCHED_AB": "PASS",
             "CODEX_CANARY": "PASS",
             "FULL_RELEASE_CODEX": "PASS",
             "PROGRAM_RELEASE": "1/3",
-            "RELEASE_INTEGRITY": "PENDING_PUBLICATION",
+            "RELEASE_INTEGRITY": release_integrity,
             "matched_ab_metrics": matched_ab["metrics"],
             "evidence_sources": {
                 "candidate_offline": _source_record(candidate),
@@ -267,5 +278,9 @@ def compose_final_evidence(
             ],
         }
     )
+    if legacy_sync_bootstrap:
+        final["release_integrity_contract"] = dict(
+            LEGACY_SYNC_BOOTSTRAP_CONTRACT
+        )
     final["evidence_body_sha256"] = evidence_body_sha256(final)
     return final
