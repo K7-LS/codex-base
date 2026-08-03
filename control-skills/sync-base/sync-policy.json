@@ -25,8 +25,7 @@
       "CANDIDATE_OFFLINE",
       "MATCHED_AB",
       "CODEX_CANARY",
-      "FULL_RELEASE_CODEX",
-      "RELEASE_INTEGRITY"
+      "FULL_RELEASE_CODEX"
     ],
     "program_release": "1/3"
   }
