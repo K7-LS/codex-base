@@ -8,6 +8,7 @@ from .acceptance import evidence_body_sha256
 from .canary import EXPECTED_PHASES
 from .matched_ab import (
     DISABLED_TOOL_FEATURES,
+    INHERITABLE_PACKAGE_CHANGES,
     MAX_INPUT_TOKENS,
     MIN_MEDIAN_INPUT_REDUCTION,
     MODEL,
@@ -102,11 +103,74 @@ def _validate_matched(
             for row in runs
         )
     )
+    inheritance = matched.get("inheritance")
+    changed_paths = (
+        inheritance.get("changed_paths")
+        if isinstance(inheritance, dict)
+        else None
+    )
+    source_digest = (
+        str(inheritance.get("source_evidence_body_sha256") or "")
+        if isinstance(inheritance, dict)
+        else ""
+    )
+    evaluated_package = matched.get("evaluated_package")
+    evaluated_digest = (
+        str(evaluated_package.get("sha256") or "")
+        if isinstance(evaluated_package, dict)
+        else ""
+    )
+    previous_model_digest = (
+        str(inheritance.get("previous_model_surface_sha256") or "")
+        if isinstance(inheritance, dict)
+        else ""
+    )
+    candidate_model_digest = (
+        str(inheritance.get("candidate_model_surface_sha256") or "")
+        if isinstance(inheritance, dict)
+        else ""
+    )
+    direct_calls = (
+        matched.get("evidence_mode") is None
+        and matched.get("calls_authorized") == 4
+        and matched.get("calls_completed") == 4
+    )
+    inherited_calls = (
+        matched.get("evidence_mode") == "INHERITED_ZERO_CALL"
+        and matched.get("calls_authorized") == 0
+        and matched.get("calls_completed") == 0
+        and matched.get("inherited_calls") == 4
+        and matched.get("repeat_authorized") is False
+        and isinstance(evaluated_package, dict)
+        and len(evaluated_digest) == 64
+        and all(
+            character in "0123456789abcdef"
+            for character in evaluated_digest
+        )
+        and isinstance(evaluated_package.get("bytes"), int)
+        and not isinstance(evaluated_package.get("bytes"), bool)
+        and evaluated_package["bytes"] > 0
+        and isinstance(inheritance, dict)
+        and len(source_digest) == 64
+        and all(character in "0123456789abcdef" for character in source_digest)
+        and len(previous_model_digest) == 64
+        and all(
+            character in "0123456789abcdef"
+            for character in previous_model_digest
+        )
+        and previous_model_digest == candidate_model_digest
+        and isinstance(changed_paths, list)
+        and bool(changed_paths)
+        and changed_paths == sorted(changed_paths)
+        and all(
+            path in INHERITABLE_PACKAGE_CHANGES for path in changed_paths
+        )
+        and inheritance.get("new_paid_calls") == 0
+    )
     valid = (
         matched.get("schema_version") == 1
         and matched.get("MATCHED_AB") == "PASS"
-        and matched.get("calls_authorized") == 4
-        and matched.get("calls_completed") == 4
+        and (direct_calls or inherited_calls)
         and client
         == {
             "id": "codex-cli",
