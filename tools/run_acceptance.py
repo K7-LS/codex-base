@@ -97,6 +97,8 @@ def _seed(home: Path) -> dict[str, str]:
         ".codex/memories/memory.md": b"memory\n",
         ".codex/state.sqlite": b"sqlite\n",
         ".codex/browser/state.json": b"browser\n",
+        ".codex/agents/legacy.toml": b'name = "legacy"\n',
+        ".agents/skills/local-personal/SKILL.md": b"# local skill\n",
         "project/work.txt": b"project\n",
     }
     for relative, payload in payloads.items():
@@ -105,12 +107,6 @@ def _seed(home: Path) -> dict[str, str]:
         path.write_bytes(payload)
     previous = home / ".codex" / "AGENTS.md"
     previous.write_text("# previous managed surface\n", encoding="utf-8")
-    legacy_agent = home / ".codex" / "agents" / "legacy.toml"
-    legacy_agent.parent.mkdir(parents=True)
-    legacy_agent.write_text('name = "legacy"\n', encoding="utf-8")
-    local = home / ".agents" / "skills" / "local-personal" / "SKILL.md"
-    local.parent.mkdir(parents=True)
-    local.write_text("# local skill\n", encoding="utf-8")
     return {
         relative: _sha256(home / relative)
         for relative in payloads
@@ -151,14 +147,9 @@ def _integration_case(
     _assert_preserved(home, sentinels)
     if (home / ".claude").exists():
         raise AssertionError("Codex install created a Claude runtime path")
-    if (home / ".agents" / "skills" / "local-personal").exists():
-        raise AssertionError("unknown skill remained in active discovery")
-    if (home / ".codex" / "agents" / "legacy.toml").exists():
-        raise AssertionError("unknown agent remained in active discovery")
-
     agent_files = sorted((home / ".codex" / "agents").glob("*.toml"))
     skill_files = sorted((home / ".agents" / "skills").glob("*/SKILL.md"))
-    if len(agent_files) != 16 or len(skill_files) != 38:
+    if len(agent_files) != 17 or len(skill_files) != 39:
         raise AssertionError(
             f"installed discovery differs: agents={len(agent_files)} "
             f"skills={len(skill_files)}"
@@ -174,10 +165,7 @@ def _integration_case(
     if inventory.returncode != 0:
         raise AssertionError(inventory.stdout or inventory.stderr)
     inventory_data = json.loads(inventory.stdout)
-    if set(inventory_data.get("quarantined_unknown") or []) != {
-        ".agents/skills/local-personal",
-        ".codex/agents/legacy.toml",
-    }:
+    if inventory_data.get("quarantined_unknown") != []:
         raise AssertionError("unknown discovery inventory differs")
 
     rollback = _foundation_command(
@@ -200,7 +188,12 @@ def _integration_case(
         or legacy_agent.read_text(encoding="utf-8") != 'name = "legacy"\n'
     ):
         raise AssertionError("unknown agent was not restored")
-    if (home / ".agents" / "skills" / "sync-base").exists():
+    if any(
+        path.is_file()
+        for path in (
+            home / ".agents" / "skills" / "sync-base"
+        ).rglob("*")
+    ):
         raise AssertionError("candidate discovery remained after rollback")
     return {
         "status": "PASS",
@@ -209,7 +202,8 @@ def _integration_case(
         "capability_skills": 37,
         "control_skills": 1,
         "preserved_sentinels": len(sentinels),
-        "unknown_skill_quarantined": True,
+        "unknown_discovery_preserved": True,
+        "total_discovery": {"agents": 17, "skills": 39},
         "rollback_restored_previous_surface": True,
     }
 
