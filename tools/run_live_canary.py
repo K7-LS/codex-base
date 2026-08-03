@@ -86,6 +86,9 @@ def _seed_isolated_home(home: Path) -> dict[Path, bytes]:
         home / ".codex" / "memories" / "memory.md": b"memory\n",
         home / ".codex" / "state.sqlite": b"sqlite\n",
         home / ".codex" / "browser" / "state.json": b"browser\n",
+        home / ".agents" / "skills" / "local-canary" / "SKILL.md": (
+            b"# local canary skill\n"
+        ),
         home / "project" / "work.txt": b"project\n",
     }
     for path, payload in sentinels.items():
@@ -93,9 +96,6 @@ def _seed_isolated_home(home: Path) -> dict[Path, bytes]:
         path.write_bytes(payload)
     guidance = home / ".codex" / "AGENTS.md"
     guidance.write_text("# pre-canary managed surface\n", encoding="utf-8")
-    local_skill = home / ".agents" / "skills" / "local-canary" / "SKILL.md"
-    local_skill.parent.mkdir(parents=True)
-    local_skill.write_text("# local canary skill\n", encoding="utf-8")
     return sentinels
 
 
