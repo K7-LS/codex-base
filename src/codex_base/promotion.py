@@ -10,6 +10,7 @@ from .acceptance import (
     evidence_body_sha256,
     release_binding_from_manifest,
 )
+from .final_evidence import LEGACY_SYNC_BOOTSTRAP_CONTRACT
 
 
 REQUIRED_FULL_RELEASE_GATES = (
@@ -229,7 +230,15 @@ def create_package_acceptance(
         binding,
         require_full_release=True,
     )
-    if evidence.get("RELEASE_INTEGRITY") != "PENDING_PUBLICATION":
+    integrity_state = evidence.get("RELEASE_INTEGRITY")
+    bootstrap_contract = evidence.get("release_integrity_contract")
+    if not (
+        integrity_state == "PENDING_PUBLICATION"
+        or (
+            integrity_state == "PASS"
+            and bootstrap_contract == LEGACY_SYNC_BOOTSTRAP_CONTRACT
+        )
+    ):
         raise ValueError(
             "pre-publication evidence has an invalid release integrity state"
         )

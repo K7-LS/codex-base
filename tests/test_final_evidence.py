@@ -90,6 +90,38 @@ def _matched(binding: dict[str, object]) -> dict[str, object]:
     )
 
 
+def _inherited_matched(binding: dict[str, object]) -> dict[str, object]:
+    evidence = _matched(binding)
+    evidence.pop("evidence_body_sha256")
+    evidence.update(
+        {
+            "evidence_mode": "INHERITED_ZERO_CALL",
+            "calls_authorized": 0,
+            "calls_completed": 0,
+            "inherited_calls": 4,
+            "repeat_authorized": False,
+            "evaluated_package": {
+                "sha256": "9" * 64,
+                "bytes": 122,
+            },
+            "inheritance": {
+                "source_evidence_body_sha256": "8" * 64,
+                "previous_model_surface_sha256": "7" * 64,
+                "candidate_model_surface_sha256": "7" * 64,
+                "changed_paths": [
+                    ".agents/skills/sync-base/sync-policy.json",
+                    ".codex/base/VERSION",
+                    ".codex/base/components.lock.json",
+                    "package-manifest.json",
+                ],
+                "new_paid_calls": 0,
+            },
+        }
+    )
+    evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
+    return evidence
+
+
 def _canary(binding: dict[str, object]) -> dict[str, object]:
     return build_canary_evidence(
         release_binding=binding,
@@ -130,6 +162,74 @@ def test_final_evidence_is_composed_only_from_bound_pass_evidence():
         "matched_ab",
         "canary",
     }
+
+
+def test_legacy_sync_bootstrap_declares_consumer_verified_integrity_contract():
+    binding = _binding()
+
+    final = compose_final_evidence(
+        candidate=_candidate(binding),
+        matched_ab=_matched(binding),
+        canary=_canary(binding),
+        legacy_sync_bootstrap=True,
+    )
+
+    assert final["RELEASE_INTEGRITY"] == "PASS"
+    assert final["release_integrity_contract"] == {
+        "mode": "CONSUMER_VERIFIED_BEFORE_EVIDENCE",
+        "legacy_updater": "codex-v0.1.1",
+        "required_checks": [
+            "gh release verify",
+            "gh release verify-asset",
+            "gh attestation verify",
+        ],
+    }
+    assert final["evidence_body_sha256"] == evidence_body_sha256(final)
+
+
+def test_final_evidence_accepts_zero_call_inheritance_for_equal_model_surface():
+    binding = _binding()
+    matched = _inherited_matched(binding)
+
+    final = compose_final_evidence(
+        candidate=_candidate(binding),
+        matched_ab=matched,
+        canary=_canary(binding),
+    )
+
+    assert final["MATCHED_AB"] == "PASS"
+    assert matched["calls_completed"] == 0
+    assert matched["inherited_calls"] == 4
+    assert final["matched_ab_metrics"] == matched["metrics"]
+
+
+def test_final_evidence_rejects_inheritance_with_changed_model_surface():
+    binding = _binding()
+    matched = _inherited_matched(binding)
+    matched["inheritance"]["candidate_model_surface_sha256"] = "6" * 64
+    matched["evidence_body_sha256"] = evidence_body_sha256(matched)
+
+    with pytest.raises(ValueError, match="matched A/B evidence"):
+        compose_final_evidence(
+            candidate=_candidate(binding),
+            matched_ab=matched,
+            canary=_canary(binding),
+        )
+
+
+def test_final_evidence_rejects_missing_inherited_model_surface_digest():
+    binding = _binding()
+    matched = _inherited_matched(binding)
+    matched["inheritance"]["previous_model_surface_sha256"] = ""
+    matched["inheritance"]["candidate_model_surface_sha256"] = ""
+    matched["evidence_body_sha256"] = evidence_body_sha256(matched)
+
+    with pytest.raises(ValueError, match="matched A/B evidence"):
+        compose_final_evidence(
+            candidate=_candidate(binding),
+            matched_ab=matched,
+            canary=_canary(binding),
+        )
 
 
 @pytest.mark.parametrize("tamper", ["candidate", "matched", "canary"])

@@ -4,10 +4,12 @@ import hashlib
 import json
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
 import tools.run_matched_ab as matched_ab_runner
+import codex_base.matched_ab as matched_ab_module
 
 from codex_base.matched_ab import (
     DISABLED_TOOL_FEATURES,
@@ -21,6 +23,74 @@ from codex_base.matched_ab import (
     summarize_results,
 )
 from codex_base.acceptance import evidence_body_sha256
+
+
+def _write_inheritance_package(
+    path: Path,
+    *,
+    version: str,
+    policy: bytes,
+    skill: bytes = b"---\nname: demo\ndescription: demo\n---\n",
+) -> None:
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(".codex/AGENTS.md", b"base guidance\n")
+        archive.writestr(".codex/agents/demo.toml", b"name = 'demo'\n")
+        archive.writestr(".agents/skills/demo/SKILL.md", skill)
+        archive.writestr(
+            ".agents/skills/sync-base/SKILL.md",
+            b"---\nname: sync-base\ndescription: sync\n---\n",
+        )
+        archive.writestr(
+            ".agents/skills/sync-base/sync-policy.json",
+            policy,
+        )
+        archive.writestr(".codex/base/VERSION", f"{version}\n")
+        archive.writestr(
+            ".codex/base/components.lock.json",
+            json.dumps({"version": version}).encode(),
+        )
+        archive.writestr(
+            "package-manifest.json",
+            json.dumps({"version": version}).encode(),
+        )
+
+
+def _direct_evidence_for_package(package: Path, tmp_path: Path) -> dict:
+    home = tmp_path / "installed-old"
+    home.mkdir()
+    with zipfile.ZipFile(package) as archive:
+        archive.extractall(home)
+    usage = {
+        "cached_input_tokens": 0,
+        "output_tokens": 10,
+        "reasoning_output_tokens": 0,
+    }
+    rows = [
+        {
+            "variant": variant,
+            "prompt_id": prompt_id,
+            "usage": {**usage, "input_tokens": tokens},
+            "result_sha256": hashlib.sha256(
+                f"{variant}-{prompt_id}".encode()
+            ).hexdigest(),
+        }
+        for variant, prompt_id, tokens in (
+            ("legacy", "hello", 80000),
+            ("candidate", "hello", 30000),
+            ("legacy", "capabilities", 100000),
+            ("candidate", "capabilities", 40000),
+        )
+    ]
+    return summarize_results(
+        rows,
+        client_version="0.146.0-alpha.3.1",
+        legacy_surface_sha256="a" * 64,
+        candidate_surface_sha256=matched_ab_runner._surface_digest(home),
+        candidate_package_sha256=hashlib.sha256(
+            package.read_bytes()
+        ).hexdigest(),
+        candidate_package_bytes=package.stat().st_size,
+    )
 
 
 def test_matched_ab_plan_is_exactly_four_balanced_calls():
@@ -374,6 +444,126 @@ def test_summary_uses_medians_and_never_contains_prompt_text():
         evidence["evidence_body_sha256"]
         == evidence_body_sha256(evidence)
     )
+
+
+def test_inherit_results_reuses_zero_calls_only_for_non_model_package_changes(
+    tmp_path,
+):
+    previous_package = tmp_path / "codex-base-0.1.2.zip"
+    candidate_package = tmp_path / "codex-base-0.1.3.zip"
+    _write_inheritance_package(
+        previous_package,
+        version="0.1.2",
+        policy=b'{"required":["RELEASE_INTEGRITY"]}\n',
+    )
+    _write_inheritance_package(
+        candidate_package,
+        version="0.1.3",
+        policy=b'{"required":[]}\n',
+    )
+    previous = _direct_evidence_for_package(previous_package, tmp_path)
+
+    evidence = matched_ab_module.inherit_results(
+        previous=previous,
+        previous_package=previous_package,
+        candidate_package=candidate_package,
+    )
+
+    assert evidence["MATCHED_AB"] == "PASS"
+    assert evidence["calls_authorized"] == 0
+    assert evidence["calls_completed"] == 0
+    assert evidence["inherited_calls"] == 4
+    assert evidence["runs"] == previous["runs"]
+    assert evidence["metrics"] == previous["metrics"]
+    assert evidence["candidate_package"] == {
+        "sha256": hashlib.sha256(candidate_package.read_bytes()).hexdigest(),
+        "bytes": candidate_package.stat().st_size,
+    }
+    assert evidence["evaluated_package"] == previous["candidate_package"]
+    assert evidence["inheritance"]["changed_paths"] == [
+        ".agents/skills/sync-base/sync-policy.json",
+        ".codex/base/VERSION",
+        ".codex/base/components.lock.json",
+        "package-manifest.json",
+    ]
+    assert (
+        evidence["inheritance"]["previous_model_surface_sha256"]
+        == evidence["inheritance"]["candidate_model_surface_sha256"]
+    )
+    assert evidence["privacy"]["prompt_text_included"] is False
+    assert evidence["evidence_body_sha256"] == evidence_body_sha256(evidence)
+
+
+def test_inherit_results_rejects_changed_skill_content(tmp_path):
+    previous_package = tmp_path / "codex-base-0.1.2.zip"
+    candidate_package = tmp_path / "codex-base-0.1.3.zip"
+    _write_inheritance_package(
+        previous_package,
+        version="0.1.2",
+        policy=b'{"required":["RELEASE_INTEGRITY"]}\n',
+    )
+    _write_inheritance_package(
+        candidate_package,
+        version="0.1.3",
+        policy=b'{"required":[]}\n',
+        skill=b"---\nname: demo\ndescription: changed\n---\n",
+    )
+    previous = _direct_evidence_for_package(previous_package, tmp_path)
+
+    with pytest.raises(ValueError, match="model-facing"):
+        matched_ab_module.inherit_results(
+            previous=previous,
+            previous_package=previous_package,
+            candidate_package=candidate_package,
+        )
+
+
+def test_inheritance_cli_writes_new_zero_call_evidence(repo_root, tmp_path):
+    previous_package = tmp_path / "codex-base-0.1.2.zip"
+    candidate_package = tmp_path / "codex-base-0.1.3.zip"
+    _write_inheritance_package(
+        previous_package,
+        version="0.1.2",
+        policy=b'{"required":["RELEASE_INTEGRITY"]}\n',
+    )
+    _write_inheritance_package(
+        candidate_package,
+        version="0.1.3",
+        policy=b'{"required":[]}\n',
+    )
+    previous = _direct_evidence_for_package(previous_package, tmp_path)
+    previous_path = tmp_path / "matched-ab-0.1.2.json"
+    previous_path.write_text(
+        json.dumps(previous, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "matched-ab-0.1.3.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "tools" / "inherit_matched_ab.py"),
+            "--previous-evidence",
+            str(previous_path),
+            "--previous-package",
+            str(previous_package),
+            "--candidate-package",
+            str(candidate_package),
+            "--output",
+            str(output),
+        ],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+
+    assert result.returncode == 0, (result.stdout or "") + (result.stderr or "")
+    evidence = json.loads(output.read_text(encoding="utf-8"))
+    assert evidence["evidence_mode"] == "INHERITED_ZERO_CALL"
+    assert evidence["inheritance"]["new_paid_calls"] == 0
 
 
 def test_abort_evidence_is_pii_free_and_binds_the_started_matrix():

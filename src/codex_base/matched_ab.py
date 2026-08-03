@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import statistics
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
 from .acceptance import evidence_body_sha256
@@ -41,6 +43,12 @@ DISABLED_TOOL_FEATURES = (
     "tool_call_mcp_elicitation",
     "tool_suggest",
     "workspace_dependencies",
+)
+INHERITABLE_PACKAGE_CHANGES = (
+    ".agents/skills/sync-base/sync-policy.json",
+    ".codex/base/VERSION",
+    ".codex/base/components.lock.json",
+    "package-manifest.json",
 )
 FAIL_CLOSED_CONFIG_OVERRIDES = (
     f'model_reasoning_effort="{REASONING_EFFORT}"',
@@ -454,6 +462,212 @@ def summarize_results(
             "personal_data_included": False,
         },
     }
+    evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
+    return evidence
+
+
+def _package_inventory(path: Path) -> dict[str, str]:
+    inventory: dict[str, str] = {}
+    with zipfile.ZipFile(path) as archive:
+        for entry in archive.infolist():
+            if entry.is_dir():
+                continue
+            name = entry.filename
+            parts = PurePosixPath(name).parts
+            if (
+                not parts
+                or name.startswith("/")
+                or "\\" in name
+                or any(part in {"", ".", ".."} for part in parts)
+                or name in inventory
+            ):
+                raise ValueError("matched A/B package inventory is unsafe")
+            inventory[name] = hashlib.sha256(archive.read(entry)).hexdigest()
+    if not inventory:
+        raise ValueError("matched A/B package inventory is empty")
+    return inventory
+
+
+def _surface_digest_from_inventory(
+    inventory: dict[str, str],
+    *,
+    model_facing_only: bool,
+) -> str:
+    def selected(name: str) -> bool:
+        if name == ".codex/AGENTS.md":
+            return True
+        if name.startswith(".codex/agents/"):
+            return not model_facing_only or name.endswith(".toml")
+        if name.startswith(".agents/skills/"):
+            return not model_facing_only or name.endswith("/SKILL.md")
+        return False
+
+    names = [name for name in inventory if selected(name)]
+    if not names:
+        raise ValueError("matched A/B package surface is missing")
+    digest = hashlib.sha256()
+    for name in sorted(
+        names,
+        key=lambda value: tuple(
+            part.casefold() for part in PurePosixPath(value).parts
+        ),
+    ):
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(inventory[name].encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def _validate_direct_evidence_for_inheritance(
+    evidence: dict[str, Any],
+    package: Path,
+    inventory: dict[str, str],
+) -> None:
+    expected_runs = [
+        (run.variant, run.prompt_id) for run in planned_runs()
+    ]
+    runs = evidence.get("runs")
+    identities = (
+        [
+            (str(run.get("variant")), str(run.get("prompt_id")))
+            for run in runs
+            if isinstance(run, dict)
+        ]
+        if isinstance(runs, list)
+        else []
+    )
+    package_record = evidence.get("candidate_package")
+    surfaces = evidence.get("surfaces")
+    tools = evidence.get("tools")
+    privacy = evidence.get("privacy")
+    metrics = evidence.get("metrics")
+    package_sha256 = hashlib.sha256(package.read_bytes()).hexdigest()
+    valid = (
+        evidence.get("schema_version") == 1
+        and evidence.get("MATCHED_AB") == "PASS"
+        and evidence.get("calls_authorized") == 4
+        and evidence.get("calls_completed") == 4
+        and evidence.get("client")
+        == {"id": "codex-cli", "version": SUPPORTED_CLIENT}
+        and evidence.get("model") == MODEL
+        and evidence.get("reasoning_effort") == REASONING_EFFORT
+        and package_record
+        == {"sha256": package_sha256, "bytes": package.stat().st_size}
+        and isinstance(surfaces, dict)
+        and surfaces.get("candidate_sha256")
+        == _surface_digest_from_inventory(
+            inventory,
+            model_facing_only=False,
+        )
+        and isinstance(tools, dict)
+        and tools.get("disabled_features") == list(DISABLED_TOOL_FEATURES)
+        and tools.get("web_search") == "disabled"
+        and tools.get("unexpected_tool_events") == 0
+        and isinstance(privacy, dict)
+        and all(
+            privacy.get(name) is False
+            for name in (
+                "prompt_text_included",
+                "response_text_included",
+                "credentials_included",
+                "personal_data_included",
+            )
+        )
+        and isinstance(metrics, dict)
+        and isinstance(metrics.get("median_input_reduction"), (int, float))
+        and metrics["median_input_reduction"] >= MIN_MEDIAN_INPUT_REDUCTION
+        and identities == expected_runs
+        and all(
+            isinstance(run, dict)
+            and run.get("tool_events") == 0
+            and isinstance(run.get("usage"), dict)
+            and isinstance(run["usage"].get("input_tokens"), int)
+            and not isinstance(run["usage"].get("input_tokens"), bool)
+            and 0 <= run["usage"]["input_tokens"] <= MAX_INPUT_TOKENS
+            for run in (runs or [])
+        )
+        and evidence.get("evidence_body_sha256")
+        == evidence_body_sha256(evidence)
+    )
+    if not valid:
+        raise ValueError("previous matched A/B evidence is invalid")
+
+
+def inherit_results(
+    *,
+    previous: dict[str, Any],
+    previous_package: Path,
+    candidate_package: Path,
+) -> dict[str, Any]:
+    """Bind prior paid A/B to a package with identical model inputs."""
+
+    previous_inventory = _package_inventory(previous_package)
+    candidate_inventory = _package_inventory(candidate_package)
+    _validate_direct_evidence_for_inheritance(
+        previous,
+        previous_package,
+        previous_inventory,
+    )
+    previous_model = _surface_digest_from_inventory(
+        previous_inventory,
+        model_facing_only=True,
+    )
+    candidate_model = _surface_digest_from_inventory(
+        candidate_inventory,
+        model_facing_only=True,
+    )
+    if previous_model != candidate_model:
+        raise ValueError("matched A/B model-facing package surface differs")
+    changed_paths = sorted(
+        name
+        for name in previous_inventory.keys() | candidate_inventory.keys()
+        if previous_inventory.get(name) != candidate_inventory.get(name)
+    )
+    if not changed_paths or any(
+        name not in INHERITABLE_PACKAGE_CHANGES for name in changed_paths
+    ):
+        raise ValueError("matched A/B package changes are not inheritable")
+
+    evidence = copy.deepcopy(previous)
+    evidence.pop("evidence_body_sha256", None)
+    previous_package_record = copy.deepcopy(previous["candidate_package"])
+    evidence.update(
+        {
+            "generated_at_utc": datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "evidence_mode": "INHERITED_ZERO_CALL",
+            "calls_authorized": 0,
+            "calls_completed": 0,
+            "inherited_calls": 4,
+            "repeat_authorized": False,
+            "evaluated_package": previous_package_record,
+            "candidate_package": {
+                "sha256": hashlib.sha256(
+                    candidate_package.read_bytes()
+                ).hexdigest(),
+                "bytes": candidate_package.stat().st_size,
+            },
+            "surfaces": {
+                "legacy_sha256": previous["surfaces"]["legacy_sha256"],
+                "candidate_sha256": _surface_digest_from_inventory(
+                    candidate_inventory,
+                    model_facing_only=False,
+                ),
+            },
+            "inheritance": {
+                "source_evidence_body_sha256": previous[
+                    "evidence_body_sha256"
+                ],
+                "previous_model_surface_sha256": previous_model,
+                "candidate_model_surface_sha256": candidate_model,
+                "changed_paths": changed_paths,
+                "new_paid_calls": 0,
+            },
+        }
+    )
     evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
     return evidence
 
