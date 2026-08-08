@@ -63,6 +63,7 @@ token-дисциплина, lazy dependency policy и one-way sync. WARM discove
 | `$revit-family-generator-ru` | Use when семейство Revit нужно собрать в RU/мм-профиле. | `revit.execute` |
 | `$revit-testbed` | Use when Revit-инструмент нужно принять на живом стенде. | `revit.inspect`, `revit.execute` |
 | `$ru-gov-access` | Use when нужен российский госреестр с гео-ограничениями. | `web.fetch`, `web.browser.interact` |
+| `$ru-writing-style` | Use when пишешь или правишь русский текст для человека — письмо, КП, пояснительную записку, ответ экспертизе, отчёт, ТЗ, статью. |  |
 | `$skill-development` | Use when создаётся или изменяется повторно используемый навык. | `core.files.read`, `core.files.write` |
 | `$spec-writer` | Use when нужна спецификация оборудования в XLSX или DOCX. | `spreadsheet.write`, `document.word.write` |
 | `$stroy-formatting` | Use when строительный документ нужно оформить по образцу. | `document.word.write` |
@@ -100,6 +101,7 @@ token-дисциплина, lazy dependency policy и one-way sync. WARM discove
 - `memory/reference_docx_editing_failures.md`
 - `memory/reference_hybrid_ai_pipeline.md`
 - `memory/reference_inkscape_pdf_editing.md`
+- `memory/reference_officecli.md`
 - `chains/docx-from-template.md`
 - `chains/pdf-scan-extract.md`
 - `chains/upd-to-spec-reconcile.md`

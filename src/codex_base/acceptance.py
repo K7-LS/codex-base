@@ -276,9 +276,9 @@ def write_acceptance_evidence(
         counts
         == {
             "agents": 16,
-            "capability_skills": 37,
+            "capability_skills": 38,
             "control_skills": 1,
-            "cold": 25,
+            "cold": 26,
         }
         and structured["status"] == "PASS"
         and secrets["status"] == "PASS"

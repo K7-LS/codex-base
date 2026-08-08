@@ -14,7 +14,7 @@ def test_static_startup_context_reduction_exceeds_release_threshold(repo_root):
     assert report["candidate"]["surfaces"]["agents_discovery"]["count"] == 16
     assert (
         report["candidate"]["surfaces"]["skills_discovery"]["capability_skills"]
-        == 37
+        == 38
     )
     assert report["candidate"]["surfaces"]["skills_discovery"]["control_skills"] == 1
 

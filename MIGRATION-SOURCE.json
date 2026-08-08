@@ -52,6 +52,7 @@
       "revit-family-generator-ru",
       "revit-testbed",
       "ru-gov-access",
+      "ru-writing-style",
       "skill-development",
       "spec-writer",
       "stroy-formatting",
@@ -90,7 +91,8 @@
       "chains/upd-to-spec-reconcile.md",
       "commands/format.md",
       "commands/harvest.md",
-      "commands/sync-base.md"
+      "commands/sync-base.md",
+      "memory/reference_officecli.md"
     ]
   },
   "not_migrated_as_runtime": [

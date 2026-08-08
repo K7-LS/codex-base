@@ -33,7 +33,7 @@ def test_native_tree_materializes_every_catalog_component(repo_root):
     agent_files = sorted((repo_root / "agents").glob("*.toml"))
     skill_files = sorted((repo_root / "skills").glob("*/SKILL.md"))
     assert len(agent_files) == 16
-    assert len(skill_files) == 37
+    assert len(skill_files) == 38
 
     for item in catalog["agents"]:
         path = repo_root / str(item["source"])
@@ -87,7 +87,7 @@ def test_cold_catalog_is_complete_and_outside_discovery(repo_root):
     """Catches a referenced method that was omitted from the release payload."""
     cold = json.loads((repo_root / "catalog" / "cold.json").read_text(encoding="utf-8"))
 
-    assert len(cold["memory"]) == 19
+    assert len(cold["memory"]) == 20
     assert len(cold["chains"]) == 3
     assert len(cold["commands"]) == 3
     for group in ("memory", "chains", "commands"):

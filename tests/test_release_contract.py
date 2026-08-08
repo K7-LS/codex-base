@@ -60,9 +60,9 @@ def test_component_lock_covers_all_vendored_runtime_components(repo_root):
     assert lock["target"] == "codex"
     assert lock["version"] == "0.1.0"
     assert len(lock["components"]["agents"]) == 16
-    assert len(lock["components"]["skills"]) == 37
+    assert len(lock["components"]["skills"]) == 38
     assert len(lock["components"]["control_skills"]) == 1
-    assert len(lock["components"]["cold"]) == 25
+    assert len(lock["components"]["cold"]) == 26
     assert len(lock["components"]["runtime"]) == 1
     runtime_paths = {
         row["path"]
@@ -138,7 +138,7 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
                     and "/sync-base/" not in name
                 ]
             )
-            == 37
+            == 38
         )
         assert not any("/tests/" in name or "__pycache__" in name for name in names)
 
@@ -310,5 +310,5 @@ def test_migration_source_is_pinned_and_complete(repo_root):
     assert source["source"]["commit"] == "d263065d902000a032c87bd31175889168f616bc"
     assert source["source"]["tree"] == "7e3fda8ff712e22bb1d5a2bb533bd7a6998cc474"
     assert len(source["inventory"]["agents"]) == 16
-    assert len(source["inventory"]["skills"]) == 37
-    assert len(source["inventory"]["cold"]) == 25
+    assert len(source["inventory"]["skills"]) == 38
+    assert len(source["inventory"]["cold"]) == 26
