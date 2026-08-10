@@ -138,8 +138,10 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
                     and "/sync-base/" not in name
                 ]
             )
-            == 38
+            == 37
         )
+        assert ".agents/skills/ru-writing-style/SKILL.md" not in names
+        assert "session-tools-baseline/tools/ru-writing-style/SKILL.md" in names
         assert not any("/tests/" in name or "__pycache__" in name for name in names)
 
         package_manifest = json.loads(
@@ -151,11 +153,29 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
         }
         assert "supported_codex_client" not in package_manifest
         managed_surface = package_manifest["managed_surface"]
-        assert managed_surface["exact_directories"] == [
-            ".codex/base/cold",
-            ".codex/base/foundation",
-            ".codex/base/runtime",
-        ]
+        package_skill_directories = sorted(
+            {
+                "/".join(name.split("/")[:3])
+                for name in names
+                if name.startswith(".agents/skills/")
+            }
+        )
+        assert managed_surface["exact_directories"] == sorted(
+            [
+                ".codex/base/cold",
+                ".codex/base/foundation",
+                ".codex/base/runtime",
+                *package_skill_directories,
+            ]
+        )
+        assert ".agents/skills" not in managed_surface["exact_directories"]
+        assert ".agents/skills/sync-base" in managed_surface["exact_directories"]
+        assert ".agents/skills/ru-writing-style" not in managed_surface["exact_directories"]
+        assert all(
+            len(path.split("/")) == 3
+            for path in managed_surface["exact_directories"]
+            if path.startswith(".agents/skills/")
+        )
         assert managed_surface["merge_toml_files"] == [
             ".codex/config.toml"
         ]
@@ -195,6 +215,11 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
             "scope": "current-user",
             "set": [],
         }
+        baseline = package_manifest["session_tools_baseline"]
+        assert baseline["manifest_path"] == (
+            "session-tools-baseline/session-tools-manifest.json"
+        )
+        assert baseline["retired_tool_ids"] == []
         assert archive.read(
             ".codex/base/components.lock.json"
         ) == first.component_lock_path.read_bytes()

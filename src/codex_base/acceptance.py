@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 import yaml
 
 from .catalog import load_catalog
+from .session_tools import validate_session_tools_asset_record
 from .token_audit import audit_static_context
 
 
@@ -249,7 +250,12 @@ def release_binding_from_manifest(
         raise ValueError(
             f"release manifest lacks binding fields: {', '.join(missing)}"
         )
-    return {key: manifest[key] for key in required}
+    binding = {key: manifest[key] for key in required}
+    if "session_tools_asset" in manifest:
+        binding["session_tools_asset"] = validate_session_tools_asset_record(
+            manifest["session_tools_asset"]
+        )
+    return binding
 
 
 def evidence_body_sha256(evidence: dict[str, object]) -> str:
