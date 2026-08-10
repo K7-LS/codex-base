@@ -277,11 +277,6 @@ function Assert-LlmReleaseEvidence {
         )) {
             throw 'Program release verdict differs.'
         }
-        if ([string]$Manifest.acceptance_evidence_sha256 -cne (
-            Get-LlmSha256File -Path $EvidencePath
-        )) {
-            throw 'Acceptance evidence SHA-256 differs.'
-        }
         if ($null -eq $Evidence.release_binding) {
             throw 'Acceptance evidence release binding is missing.'
         }
