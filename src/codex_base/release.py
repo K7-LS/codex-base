@@ -496,6 +496,9 @@ def _build_release_from_export(
     entries[".codex/base/runtime/connection.ps1"] = (
         source_root / "runtime" / "connection.ps1"
     ).read_bytes()
+    entries[".codex/base/runtime/update-session-tools.ps1"] = (
+        source_root / "runtime" / "update-session-tools.ps1"
+    ).read_bytes()
     _add_tree(
         entries,
         foundation_root,
