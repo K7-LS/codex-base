@@ -17,6 +17,7 @@ from .session_tools import (
     build_session_tools_bundle,
     session_tools_asset_record,
     session_tools_baseline_entries,
+    validate_session_tools_release_binding,
 )
 
 
@@ -618,6 +619,14 @@ def _build_release_from_export(
             ],
         },
     }
+    validate_session_tools_release_binding(
+        release_manifest=release_manifest,
+        package_manifest=package_manifest,
+        session_asset_path=session_tools.zip_path,
+        baseline_manifest_bytes=entries[
+            "session-tools-baseline/session-tools-manifest.json"
+        ],
+    )
     manifest_path = dist_root / "release-manifest.json"
     lock_path = dist_root / "components.lock.json"
     manifest_path.write_bytes(_json_bytes(release_manifest))

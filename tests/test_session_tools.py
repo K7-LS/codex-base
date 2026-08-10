@@ -94,6 +94,17 @@ def test_manifest_parser_rejects_duplicate_json_keys():
         validate_session_tools_manifest(duplicate)
 
 
+def test_manifest_parser_requires_expected_release_identity():
+    payload = _json_bytes(_manifest([]))
+
+    with pytest.raises(ValueError, match="identity differs"):
+        validate_session_tools_manifest(
+            payload,
+            expected_release_tag="codex-v9.9.9",
+            expected_base_version="9.9.9",
+        )
+
+
 @pytest.mark.parametrize(
     "tools",
         [
@@ -168,6 +179,23 @@ def test_archive_rejects_duplicate_members_symlinks_and_tampered_bytes(tmp_path)
     _write_archive(tampered, manifest, {"tools/style/SKILL.md": b"alter"})
     with pytest.raises(ValueError, match="SHA-256"):
         validate_session_tools_archive(tampered)
+
+
+def test_archive_rejects_two_members_with_the_same_name(tmp_path):
+    payload = b"skill"
+    tool = {"id": "style", "files": [_file_record("SKILL.md", payload)]}
+    archive_path = tmp_path / "duplicate-member.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr(
+            "session-tools-manifest.json",
+            _json_bytes(_manifest([tool])),
+        )
+        archive.writestr("tools/style/SKILL.md", payload)
+        with pytest.warns(UserWarning, match="Duplicate name"):
+            archive.writestr("tools/style/SKILL.md", payload)
+
+    with pytest.raises(ValueError, match="duplicate ZIP member"):
+        validate_session_tools_archive(archive_path)
 
 
 def test_archive_rejects_executable_member_and_manifest_hash_tamper(tmp_path):

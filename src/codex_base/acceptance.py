@@ -252,9 +252,15 @@ def release_binding_from_manifest(
         )
     binding = {key: manifest[key] for key in required}
     if "session_tools_asset" in manifest:
+        version = manifest["version"]
+        if not isinstance(version, str) or not version:
+            raise ValueError("session tools release version is invalid")
         binding["session_tools_asset"] = validate_session_tools_asset_record(
-            manifest["session_tools_asset"]
+            manifest["session_tools_asset"],
+            expected_version=version,
         )
+        if manifest["tag"] != f"codex-v{version}":
+            raise ValueError("session tools release tag and version differ")
     return binding
 
 

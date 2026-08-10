@@ -5,8 +5,16 @@ import json
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from codex_base.acceptance import release_binding_from_manifest
 from codex_base.release import build_release
+from codex_base.session_tools import (
+    SessionToolsBuild,
+    build_session_tools_bundle,
+    session_tools_asset_record,
+    validate_session_tools_release_binding,
+)
 
 
 def _sha256(path: Path) -> str:
@@ -63,6 +71,7 @@ def test_release_binds_session_asset_and_keeps_session_skill_out_of_base(
         names = archive.namelist()
         package = json.loads(archive.read("package-manifest.json"))
         baseline = package["session_tools_baseline"]
+        baseline_manifest_bytes = archive.read(baseline["manifest_path"])
         assert not any(
             name.startswith(".agents/skills/ru-writing-style/")
             for name in names
@@ -77,6 +86,12 @@ def test_release_binds_session_asset_and_keeps_session_skill_out_of_base(
             "ru-writing-style"
         ]
         assert "session-tools-baseline/tools/ru-writing-style/SKILL.md" in names
+    assert validate_session_tools_release_binding(
+        release_manifest=built.manifest,
+        package_manifest=package,
+        session_asset_path=tmp_path / "dist" / session["name"],
+        baseline_manifest_bytes=baseline_manifest_bytes,
+    )["tools"] == baseline["tools"]
 
 
 def test_release_owns_each_base_skill_without_claiming_unknown_local_skills(
@@ -117,3 +132,114 @@ def test_legacy_release_manifest_remains_readable_without_session_asset():
     }
 
     assert release_binding_from_manifest(legacy) == legacy
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("version", "9.9.9", "asset name"),
+        ("tag", "codex-v9.9.9", "tag and version"),
+    ],
+)
+def test_release_binding_rejects_mixed_outer_session_identity(
+    repo_root: Path,
+    tmp_path: Path,
+    field: str,
+    value: str,
+    message: str,
+):
+    built = build_release(
+        repo_root,
+        tmp_path / "dist",
+        "0.1.4",
+        _foundation(tmp_path / "foundation"),
+    )
+    mixed = dict(built.manifest)
+    mixed[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        release_binding_from_manifest(mixed)
+
+
+@pytest.mark.parametrize("field", ["release_tag", "base_version"])
+def test_session_binding_rejects_internal_manifest_identity_mismatch(
+    repo_root: Path,
+    tmp_path: Path,
+    field: str,
+):
+    original = build_session_tools_bundle(
+        repo_root,
+        tmp_path / "original",
+        "0.1.4",
+    )
+    with zipfile.ZipFile(original.zip_path) as archive:
+        entries = {name: archive.read(name) for name in archive.namelist()}
+    manifest = json.loads(entries["session-tools-manifest.json"])
+    manifest[field] = "codex-v9.9.9" if field == "release_tag" else "9.9.9"
+    manifest_bytes = (
+        json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    ).encode("utf-8")
+    entries["session-tools-manifest.json"] = manifest_bytes
+    mixed_path = tmp_path / "session-tools-codex-0.1.4.zip"
+    with zipfile.ZipFile(mixed_path, "w") as archive:
+        for name, payload in entries.items():
+            archive.writestr(name, payload)
+    mixed = SessionToolsBuild(mixed_path, manifest_bytes, manifest)
+    release_manifest = {
+        "version": "0.1.4",
+        "tag": "codex-v0.1.4",
+        "session_tools_asset": session_tools_asset_record(mixed),
+    }
+    package_manifest = {
+        "target": "codex",
+        "version": "0.1.4",
+        "session_tools_baseline": {
+            "manifest_path": "session-tools-baseline/session-tools-manifest.json",
+            "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+            "tools": manifest["tools"],
+            "retired_tool_ids": [],
+        },
+    }
+
+    with pytest.raises(ValueError, match="identity differs"):
+        validate_session_tools_release_binding(
+            release_manifest=release_manifest,
+            package_manifest=package_manifest,
+            session_asset_path=mixed_path,
+            baseline_manifest_bytes=manifest_bytes,
+        )
+
+
+@pytest.mark.parametrize("tamper", ["manifest_sha256", "tools"])
+def test_session_binding_rejects_mixed_package_baseline(
+    repo_root: Path,
+    tmp_path: Path,
+    tamper: str,
+):
+    built = build_release(
+        repo_root,
+        tmp_path / "dist",
+        "0.1.4",
+        _foundation(tmp_path / "foundation"),
+    )
+    with zipfile.ZipFile(built.zip_path) as archive:
+        package = json.loads(archive.read("package-manifest.json"))
+        baseline = package["session_tools_baseline"]
+        baseline_bytes = archive.read(baseline["manifest_path"])
+    package = json.loads(json.dumps(package))
+    if tamper == "manifest_sha256":
+        package["session_tools_baseline"]["manifest_sha256"] = "0" * 64
+    else:
+        package["session_tools_baseline"]["tools"] = []
+
+    with pytest.raises(ValueError, match="baseline"):
+        validate_session_tools_release_binding(
+            release_manifest=built.manifest,
+            package_manifest=package,
+            session_asset_path=(
+                tmp_path
+                / "dist"
+                / built.manifest["session_tools_asset"]["name"]
+            ),
+            baseline_manifest_bytes=baseline_bytes,
+        )

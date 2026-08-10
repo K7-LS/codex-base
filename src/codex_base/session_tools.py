@@ -95,7 +95,12 @@ def _validate_file_record(value: object) -> dict[str, object]:
     return {"path": path, "sha256": digest, "bytes": size}
 
 
-def validate_session_tools_manifest(payload: bytes) -> dict[str, object]:
+def validate_session_tools_manifest(
+    payload: bytes,
+    *,
+    expected_release_tag: str | None = None,
+    expected_base_version: str | None = None,
+) -> dict[str, object]:
     manifest = _load_json_bytes(payload)
     _require_exact_keys(
         manifest,
@@ -110,6 +115,16 @@ def validate_session_tools_manifest(payload: bytes) -> dict[str, object]:
         raise ValueError("session tools manifest release tag is invalid")
     if not isinstance(manifest["base_version"], str) or not manifest["base_version"]:
         raise ValueError("session tools manifest base version is invalid")
+    if manifest["release_tag"] != f"codex-v{manifest['base_version']}":
+        raise ValueError("session tools manifest identity differs")
+    if (
+        expected_release_tag is not None
+        and manifest["release_tag"] != expected_release_tag
+    ) or (
+        expected_base_version is not None
+        and manifest["base_version"] != expected_base_version
+    ):
+        raise ValueError("session tools manifest identity differs")
     tools = manifest["tools"]
     if not isinstance(tools, list) or len(tools) > MAX_TOOLS:
         raise ValueError("session tools manifest tool limit exceeded")
@@ -181,6 +196,8 @@ def validate_session_tools_archive(
     archive_path: Path,
     *,
     manifest_sha256: str | None = None,
+    expected_release_tag: str | None = None,
+    expected_base_version: str | None = None,
 ) -> dict[str, object]:
     if archive_path.stat().st_size > MAX_ARCHIVE_BYTES:
         raise ValueError("session tools ZIP size limit exceeded")
@@ -195,20 +212,32 @@ def validate_session_tools_archive(
             if names.count(MANIFEST_NAME) != 1:
                 raise ValueError("session tools manifest is missing or duplicated")
             normalized_names: set[str] = set()
+            seen_names: set[str] = set()
             for info in infos:
                 unsafe = _zip_info_is_unsafe(info)
                 if unsafe:
                     raise ValueError(f"session tools ZIP contains {unsafe} entry")
                 if not _is_safe_relative_path(info.filename):
                     raise ValueError("session tools ZIP path is unsafe")
+                if info.filename in seen_names:
+                    raise ValueError("session tools ZIP has a duplicate ZIP member")
                 normalized = info.filename.casefold()
                 if normalized in normalized_names:
                     raise ValueError("session tools ZIP has a Windows case collision")
+                seen_names.add(info.filename)
                 normalized_names.add(normalized)
             manifest_bytes = archive.read(MANIFEST_NAME)
-            if manifest_sha256 is not None and hashlib.sha256(manifest_bytes).hexdigest() != manifest_sha256:
+            if (
+                manifest_sha256 is not None
+                and hashlib.sha256(manifest_bytes).hexdigest()
+                != manifest_sha256
+            ):
                 raise ValueError("session tools manifest SHA-256 differs")
-            manifest = validate_session_tools_manifest(manifest_bytes)
+            manifest = validate_session_tools_manifest(
+                manifest_bytes,
+                expected_release_tag=expected_release_tag,
+                expected_base_version=expected_base_version,
+            )
             expected: dict[str, dict[str, object]] = {MANIFEST_NAME: {}}
             for tool in manifest["tools"]:
                 assert isinstance(tool, dict)
@@ -313,7 +342,9 @@ def build_session_tools_bundle(
                 "base_version": base_version,
                 "tools": tools,
             }
-        )
+        ),
+        expected_release_tag=f"codex-v{base_version}",
+        expected_base_version=base_version,
     )
     manifest_bytes = _json_bytes(manifest)
     entries[MANIFEST_NAME] = manifest_bytes
@@ -351,7 +382,11 @@ def session_tools_asset_record(bundle: SessionToolsBuild) -> dict[str, object]:
     }
 
 
-def validate_session_tools_asset_record(value: object) -> dict[str, object]:
+def validate_session_tools_asset_record(
+    value: object,
+    *,
+    expected_version: str,
+) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError("session tools asset record must be an object")
     _require_exact_keys(
@@ -360,7 +395,8 @@ def validate_session_tools_asset_record(value: object) -> dict[str, object]:
         "session tools asset record",
     )
     name = value["name"]
-    if not isinstance(name, str) or not re.fullmatch(r"session-tools-codex-[^/\\]+\.zip", name):
+    expected_name = f"session-tools-codex-{expected_version}.zip"
+    if name != expected_name:
         raise ValueError("session tools asset name is invalid")
     for key in ("sha256", "manifest_sha256"):
         if not isinstance(value[key], str) or not _SHA256.fullmatch(value[key]):
@@ -370,3 +406,87 @@ def validate_session_tools_asset_record(value: object) -> dict[str, object]:
         if not isinstance(number, int) or isinstance(number, bool) or number <= 0 or number > limit:
             raise ValueError(f"session tools asset {key} is invalid")
     return dict(value)
+
+
+def validate_session_tools_release_binding(
+    *,
+    release_manifest: dict[str, object],
+    package_manifest: dict[str, object],
+    session_asset_path: Path,
+    baseline_manifest_bytes: bytes,
+) -> dict[str, object]:
+    version = release_manifest.get("version")
+    tag = release_manifest.get("tag")
+    if not isinstance(version, str) or not version:
+        raise ValueError("session tools release version is invalid")
+    asset = validate_session_tools_asset_record(
+        release_manifest.get("session_tools_asset"),
+        expected_version=version,
+    )
+    if tag != f"codex-v{version}":
+        raise ValueError("session tools release tag and version differ")
+    if session_asset_path.name != asset["name"]:
+        raise ValueError("session tools asset path differs")
+    asset_bytes = session_asset_path.read_bytes()
+    if len(asset_bytes) != asset["bytes"]:
+        raise ValueError("session tools asset byte count differs")
+    if hashlib.sha256(asset_bytes).hexdigest() != asset["sha256"]:
+        raise ValueError("session tools asset SHA-256 differs")
+    manifest = validate_session_tools_archive(
+        session_asset_path,
+        manifest_sha256=str(asset["manifest_sha256"]),
+        expected_release_tag=str(tag),
+        expected_base_version=version,
+    )
+    if (
+        manifest["release_tag"] != tag
+        or manifest["base_version"] != version
+    ):
+        raise ValueError("session tools internal manifest identity differs")
+    tool_count = len(manifest["tools"])
+    file_count = sum(
+        len(tool["files"])
+        for tool in manifest["tools"]
+        if isinstance(tool, dict)
+    )
+    if asset["tool_count"] != tool_count or asset["file_count"] != file_count:
+        raise ValueError("session tools asset counts differ")
+    if (
+        package_manifest.get("target") != "codex"
+        or package_manifest.get("version") != version
+    ):
+        raise ValueError("session tools package identity differs")
+    baseline = package_manifest.get("session_tools_baseline")
+    if not isinstance(baseline, dict):
+        raise ValueError("session tools package baseline is missing")
+    _require_exact_keys(
+        baseline,
+        {"manifest_path", "manifest_sha256", "tools", "retired_tool_ids"},
+        "session tools package baseline",
+    )
+    if baseline["manifest_path"] != BASELINE_MANIFEST_PATH:
+        raise ValueError("session tools baseline manifest path differs")
+    baseline_sha256 = hashlib.sha256(baseline_manifest_bytes).hexdigest()
+    if (
+        baseline["manifest_sha256"] != asset["manifest_sha256"]
+        or baseline["manifest_sha256"] != baseline_sha256
+    ):
+        raise ValueError("session tools baseline manifest SHA-256 differs")
+    baseline_manifest = validate_session_tools_manifest(
+        baseline_manifest_bytes,
+        expected_release_tag=str(tag),
+        expected_base_version=version,
+    )
+    if baseline_manifest != manifest or baseline["tools"] != manifest["tools"]:
+        raise ValueError("session tools baseline tools differ")
+    retired = baseline["retired_tool_ids"]
+    if not isinstance(retired, list) or any(
+        not isinstance(tool_id, str) or not _TOOL_ID.fullmatch(tool_id)
+        for tool_id in retired
+    ):
+        raise ValueError("session tools retired tool ids are invalid")
+    if retired != sorted(set(retired)):
+        raise ValueError(
+            "session tools retired tool ids are not unique and sorted"
+        )
+    return manifest
