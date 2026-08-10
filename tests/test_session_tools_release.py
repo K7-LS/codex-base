@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import warnings
 import zipfile
 from pathlib import Path
 
@@ -50,6 +51,24 @@ def _foundation(root: Path) -> Path:
     return root
 
 
+def _copy_package_with_entries(
+    source: Path,
+    destination: Path,
+    transform,
+) -> Path:
+    with zipfile.ZipFile(source) as archive:
+        entries = [
+            (info.filename, archive.read(info))
+            for info in archive.infolist()
+        ]
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Duplicate name:")
+        with zipfile.ZipFile(destination, "w") as archive:
+            for name, payload in transform(entries):
+                archive.writestr(name, payload)
+    return destination
+
+
 def test_release_binds_session_asset_and_keeps_session_skill_out_of_base(
     repo_root: Path, tmp_path: Path
 ):
@@ -80,7 +99,7 @@ def test_release_binds_session_asset_and_keeps_session_skill_out_of_base(
             "session-tools-baseline/session-tools-manifest.json"
         )
         assert baseline["manifest_sha256"] == hashlib.sha256(
-            archive.read(baseline["manifest_path"])
+            baseline_manifest_bytes
         ).hexdigest()
         assert [tool["id"] for tool in baseline["tools"]] == [
             "ru-writing-style"
@@ -90,7 +109,7 @@ def test_release_binds_session_asset_and_keeps_session_skill_out_of_base(
         release_manifest=built.manifest,
         package_manifest=package,
         session_asset_path=tmp_path / "dist" / session["name"],
-        baseline_manifest_bytes=baseline_manifest_bytes,
+        package_archive_path=built.zip_path,
     )["tools"] == baseline["tools"]
 
 
@@ -206,7 +225,7 @@ def test_session_binding_rejects_internal_manifest_identity_mismatch(
             release_manifest=release_manifest,
             package_manifest=package_manifest,
             session_asset_path=mixed_path,
-            baseline_manifest_bytes=manifest_bytes,
+            package_archive_path=tmp_path / "unused-package.zip",
         )
 
 
@@ -224,8 +243,6 @@ def test_session_binding_rejects_mixed_package_baseline(
     )
     with zipfile.ZipFile(built.zip_path) as archive:
         package = json.loads(archive.read("package-manifest.json"))
-        baseline = package["session_tools_baseline"]
-        baseline_bytes = archive.read(baseline["manifest_path"])
     package = json.loads(json.dumps(package))
     if tamper == "manifest_sha256":
         package["session_tools_baseline"]["manifest_sha256"] = "0" * 64
@@ -241,5 +258,108 @@ def test_session_binding_rejects_mixed_package_baseline(
                 / "dist"
                 / built.manifest["session_tools_asset"]["name"]
             ),
-            baseline_manifest_bytes=baseline_bytes,
+            package_archive_path=built.zip_path,
+        )
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "payload",
+        "missing",
+        "extra",
+        "duplicate",
+        "casefold_collision",
+        "unsafe",
+    ],
+)
+def test_session_binding_rejects_invalid_package_baseline_members(
+    repo_root: Path,
+    tmp_path: Path,
+    tamper: str,
+):
+    built = build_release(
+        repo_root,
+        tmp_path / "dist",
+        "0.1.4",
+        _foundation(tmp_path / "foundation"),
+    )
+    with zipfile.ZipFile(built.zip_path) as archive:
+        package = json.loads(archive.read("package-manifest.json"))
+    target = "session-tools-baseline/tools/ru-writing-style/SKILL.md"
+
+    def transform(entries: list[tuple[str, bytes]]):
+        if tamper == "payload":
+            return [
+                (name, b"tampered\n" if name == target else payload)
+                for name, payload in entries
+            ]
+        if tamper == "missing":
+            return [(name, payload) for name, payload in entries if name != target]
+        if tamper == "duplicate":
+            payload = next(payload for name, payload in entries if name == target)
+            return [*entries, (target, payload)]
+        addition = {
+            "extra": (
+                "session-tools-baseline/tools/ru-writing-style/extra.md",
+                b"extra\n",
+            ),
+            "casefold_collision": (
+                "session-tools-baseline/tools/ru-writing-style/skill.md",
+                b"collision\n",
+            ),
+            "unsafe": (
+                "session-tools-baseline/tools/ru-writing-style/../escape.md",
+                b"unsafe\n",
+            ),
+        }[tamper]
+        return [*entries, addition]
+
+    package_path = _copy_package_with_entries(
+        built.zip_path,
+        tmp_path / f"package-{tamper}.zip",
+        transform,
+    )
+    with pytest.raises(ValueError, match="baseline"):
+        validate_session_tools_release_binding(
+            release_manifest=built.manifest,
+            package_manifest=package,
+            session_asset_path=(
+                tmp_path
+                / "dist"
+                / built.manifest["session_tools_asset"]["name"]
+            ),
+            package_archive_path=package_path,
+        )
+
+
+@pytest.mark.parametrize("field", ["sha256", "bytes"])
+def test_session_binding_rejects_mixed_package_baseline_file_record(
+    repo_root: Path,
+    tmp_path: Path,
+    field: str,
+):
+    built = build_release(
+        repo_root,
+        tmp_path / "dist",
+        "0.1.4",
+        _foundation(tmp_path / "foundation"),
+    )
+    with zipfile.ZipFile(built.zip_path) as archive:
+        package = json.loads(archive.read("package-manifest.json"))
+    package = json.loads(json.dumps(package))
+    target = "session-tools-baseline/tools/ru-writing-style/SKILL.md"
+    record = next(row for row in package["files"] if row["path"] == target)
+    record[field] = "0" * 64 if field == "sha256" else record["bytes"] + 1
+
+    with pytest.raises(ValueError, match="baseline file record"):
+        validate_session_tools_release_binding(
+            release_manifest=built.manifest,
+            package_manifest=package,
+            session_asset_path=(
+                tmp_path
+                / "dist"
+                / built.manifest["session_tools_asset"]["name"]
+            ),
+            package_archive_path=built.zip_path,
         )

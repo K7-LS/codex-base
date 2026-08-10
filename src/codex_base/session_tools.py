@@ -408,12 +408,106 @@ def validate_session_tools_asset_record(
     return dict(value)
 
 
+def _is_baseline_member_candidate(name: object) -> bool:
+    if not isinstance(name, str):
+        return False
+    normalized = name.replace("\\", "/").casefold()
+    return normalized.startswith("session-tools-baseline/")
+
+
+def _read_package_baseline_entries(
+    package_archive_path: Path,
+    expected_names: set[str],
+) -> dict[str, bytes]:
+    try:
+        with zipfile.ZipFile(package_archive_path) as archive:
+            infos = [
+                info
+                for info in archive.infolist()
+                if _is_baseline_member_candidate(info.filename)
+            ]
+            seen_names: set[str] = set()
+            normalized_names: set[str] = set()
+            for info in infos:
+                unsafe = _zip_info_is_unsafe(info)
+                if unsafe:
+                    raise ValueError(
+                        f"session tools package baseline contains {unsafe} entry"
+                    )
+                if not _is_safe_relative_path(info.filename):
+                    raise ValueError("session tools package baseline path is unsafe")
+                if info.filename in seen_names:
+                    raise ValueError(
+                        "session tools package baseline has a duplicate ZIP member"
+                    )
+                normalized = info.filename.casefold()
+                if normalized in normalized_names:
+                    raise ValueError(
+                        "session tools package baseline has a Windows case collision"
+                    )
+                seen_names.add(info.filename)
+                normalized_names.add(normalized)
+            if seen_names != expected_names:
+                raise ValueError(
+                    "session tools package baseline has unexpected or missing entries"
+                )
+            return {info.filename: archive.read(info) for info in infos}
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise ValueError("session tools package ZIP is unreadable") from exc
+
+
+def _package_baseline_file_records(
+    package_manifest: dict[str, object],
+    expected_names: set[str],
+) -> dict[str, dict[str, object]]:
+    files = package_manifest.get("files")
+    if not isinstance(files, list):
+        raise ValueError("session tools package baseline file records are missing")
+    records: dict[str, dict[str, object]] = {}
+    normalized_paths: set[str] = set()
+    for value in files:
+        if not isinstance(value, dict):
+            continue
+        path = value.get("path")
+        if not _is_baseline_member_candidate(path):
+            continue
+        _require_exact_keys(
+            value,
+            {"path", "sha256", "bytes"},
+            "session tools package baseline file record",
+        )
+        if not _is_safe_relative_path(path):
+            raise ValueError("session tools package baseline file path is unsafe")
+        normalized = str(path).casefold()
+        if path in records or normalized in normalized_paths:
+            raise ValueError(
+                "session tools package baseline file record is duplicated"
+            )
+        digest = value["sha256"]
+        size = value["bytes"]
+        if not isinstance(digest, str) or not _SHA256.fullmatch(digest):
+            raise ValueError(
+                "session tools package baseline file record SHA-256 is invalid"
+            )
+        if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+            raise ValueError(
+                "session tools package baseline file record size is invalid"
+            )
+        records[str(path)] = dict(value)
+        normalized_paths.add(normalized)
+    if set(records) != expected_names:
+        raise ValueError(
+            "session tools package baseline file records differ"
+        )
+    return records
+
+
 def validate_session_tools_release_binding(
     *,
     release_manifest: dict[str, object],
     package_manifest: dict[str, object],
     session_asset_path: Path,
-    baseline_manifest_bytes: bytes,
+    package_archive_path: Path,
 ) -> dict[str, object]:
     version = release_manifest.get("version")
     tag = release_manifest.get("tag")
@@ -466,6 +560,21 @@ def validate_session_tools_release_binding(
     )
     if baseline["manifest_path"] != BASELINE_MANIFEST_PATH:
         raise ValueError("session tools baseline manifest path differs")
+    expected_payloads: dict[str, dict[str, object]] = {}
+    for tool in manifest["tools"]:
+        assert isinstance(tool, dict)
+        for record in tool["files"]:
+            assert isinstance(record, dict)
+            name = (
+                f"session-tools-baseline/tools/{tool['id']}/{record['path']}"
+            )
+            expected_payloads[name] = record
+    expected_names = {BASELINE_MANIFEST_PATH, *expected_payloads}
+    baseline_entries = _read_package_baseline_entries(
+        package_archive_path,
+        expected_names,
+    )
+    baseline_manifest_bytes = baseline_entries[BASELINE_MANIFEST_PATH]
     baseline_sha256 = hashlib.sha256(baseline_manifest_bytes).hexdigest()
     if (
         baseline["manifest_sha256"] != asset["manifest_sha256"]
@@ -479,6 +588,26 @@ def validate_session_tools_release_binding(
     )
     if baseline_manifest != manifest or baseline["tools"] != manifest["tools"]:
         raise ValueError("session tools baseline tools differ")
+    package_records = _package_baseline_file_records(
+        package_manifest,
+        expected_names,
+    )
+    for name, payload in baseline_entries.items():
+        digest = hashlib.sha256(payload).hexdigest()
+        package_record = package_records[name]
+        if (
+            package_record["bytes"] != len(payload)
+            or package_record["sha256"] != digest
+        ):
+            raise ValueError("session tools package baseline file record differs")
+        if name == BASELINE_MANIFEST_PATH:
+            continue
+        manifest_record = expected_payloads[name]
+        if (
+            manifest_record["bytes"] != len(payload)
+            or manifest_record["sha256"] != digest
+        ):
+            raise ValueError("session tools package baseline payload differs")
     retired = baseline["retired_tool_ids"]
     if not isinstance(retired, list) or any(
         not isinstance(tool_id, str) or not _TOOL_ID.fullmatch(tool_id)

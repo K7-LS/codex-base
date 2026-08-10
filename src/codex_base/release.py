@@ -623,9 +623,7 @@ def _build_release_from_export(
         release_manifest=release_manifest,
         package_manifest=package_manifest,
         session_asset_path=session_tools.zip_path,
-        baseline_manifest_bytes=entries[
-            "session-tools-baseline/session-tools-manifest.json"
-        ],
+        package_archive_path=zip_path,
     )
     manifest_path = dist_root / "release-manifest.json"
     lock_path = dist_root / "components.lock.json"
