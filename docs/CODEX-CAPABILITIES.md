@@ -5,7 +5,7 @@
 На каждом новом сеансе загружается только HOT-слой: компактные запреты,
 маршрутизация основных строительных доменов, reviewer/risk gates,
 token-дисциплина, lazy dependency policy и one-way sync. WARM discovery
-показывает названия, короткие описания и пути 16 агентов, 37 capability-skills
+показывает названия, короткие описания и пути 16 агентов, 38 capability-skills
 и одного control-skill `$sync-base`.
 
 Полные методологии, скрипты, шаблоны и references на старте неизвестны и не
@@ -34,7 +34,7 @@ token-дисциплина, lazy dependency policy и one-way sync. WARM discove
 | `snabzhenets` | Разбирает УПД и входящие КП, сравнивает поставщиков и формирует закупочные заявки. | RW | `core.files.read`, `spreadsheet.write` |
 | `word-checker` | Read-only проверка DOCX: структура, стили, таблицы, изображения и незаполненные шаблоны. | RO | `document.word.read` |
 
-## 37 capability-skills
+## 38 capability-skills
 
 | Skill | Когда загружается | Зависимости |
 | --- | --- | --- |
