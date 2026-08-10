@@ -30,6 +30,8 @@ def main() -> int:
     agents = _read("catalog/agents.json")
     skills = _read("catalog/skills.json")
     cold = _read("catalog/cold.json")
+    agent_count = len(agents)
+    capability_skill_count = len(skills)
     token = audit_static_context(ROOT)
     token_report = ROOT / "reports" / "static-token-audit.json"
     token_report.parent.mkdir(exist_ok=True)
@@ -72,7 +74,7 @@ def main() -> int:
 На каждом новом сеансе загружается только HOT-слой: компактные запреты,
 маршрутизация основных строительных доменов, reviewer/risk gates,
 token-дисциплина, lazy dependency policy и one-way sync. WARM discovery
-показывает названия, короткие описания и пути 16 агентов, 37 capability-skills
+показывает названия, короткие описания и пути {agent_count} агентов, {capability_skill_count} capability-skills
 и одного control-skill `$sync-base`.
 
 Полные методологии, скрипты, шаблоны и references на старте неизвестны и не
@@ -80,11 +82,11 @@ token-дисциплина, lazy dependency policy и one-way sync. WARM discove
 Простой разговор выполняется без инструментов, custom agents и reviewers.
 Модель и reasoning-level приходят от пользователя/host и базой не задаются.
 
-## 16 агентов
+## {agent_count} агентов
 
 {_table(agent_rows)}
 
-## 37 capability-skills
+## {capability_skill_count} capability-skills
 
 {_table(skill_rows)}
 
@@ -109,8 +111,8 @@ token-дисциплина, lazy dependency policy и one-way sync. WARM discove
 - `~/.codex/AGENTS.md`
 - `~/.codex/config.toml` — слияние обязательных ключей без удаления локальных секций
 - `~/.codex/hooks.json`
-- 16 файлов в `~/.codex/agents/`; соседние локальные агенты сохраняются
-- 37 capability-skills + `$sync-base` в `~/.agents/skills/`; соседние локальные skills сохраняются
+- {agent_count} файлов в `~/.codex/agents/`; соседние локальные агенты сохраняются
+- {capability_skill_count} capability-skills + `$sync-base` в `~/.agents/skills/`; соседние локальные skills сохраняются
 - `~/.codex/base/cold/`
 - `~/.codex/base/runtime/`
 - `~/.codex/base/foundation/`

@@ -12,6 +12,14 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterator
 
+from .session_tools import (
+    SessionToolsBuild,
+    build_session_tools_bundle,
+    session_tools_asset_record,
+    session_tools_baseline_entries,
+    validate_session_tools_release_binding,
+)
+
 
 SUPPORTED_CODEX_CLIENT = "0.146.0-alpha.3.1"
 SOURCE_REPOSITORY = "https://github.com/daniileliseev1337/claude-base"
@@ -336,9 +344,16 @@ def _add_tree(
     entries: dict[str, bytes],
     source_root: Path,
     destination_root: str,
+    *,
+    excluded_roots: frozenset[str] = frozenset(),
 ) -> None:
     for path in _tree_files(source_root):
         relative = path.relative_to(source_root).as_posix()
+        if any(
+            relative == root or relative.startswith(root + "/")
+            for root in excluded_roots
+        ):
+            continue
         destination = str(PurePosixPath(destination_root) / relative)
         entries[destination] = path.read_bytes()
 
@@ -413,6 +428,11 @@ def build_release(
             version,
             rendered_source=identity,
         )
+        session_tools = build_session_tools_bundle(
+            source_root,
+            dist_root,
+            version,
+        )
         return _build_release_from_export(
             source_root=source_root,
             dist_root=dist_root,
@@ -422,6 +442,7 @@ def build_release(
             foundation_manifest_sha256=foundation_manifest_sha256,
             component_lock=component_lock,
             identity=identity,
+            session_tools=session_tools,
         )
 
 
@@ -435,6 +456,7 @@ def _build_release_from_export(
     foundation_manifest_sha256: str,
     component_lock: dict[str, object],
     identity: dict[str, str],
+    session_tools: SessionToolsBuild,
 ) -> ReleaseBuild:
     component_lock_bytes = _json_bytes(component_lock)
     entries: dict[str, bytes] = {
@@ -449,8 +471,19 @@ def _build_release_from_export(
         ".codex/base/components.lock.json": component_lock_bytes,
     }
     _add_tree(entries, source_root / "agents", ".codex/agents")
-    _add_tree(entries, source_root / "skills", ".agents/skills")
+    session_tool_ids = frozenset(
+        str(tool["id"])
+        for tool in session_tools.manifest["tools"]
+        if isinstance(tool, dict)
+    )
+    _add_tree(
+        entries,
+        source_root / "skills",
+        ".agents/skills",
+        excluded_roots=session_tool_ids,
+    )
     _add_tree(entries, source_root / "control-skills", ".agents/skills")
+    entries.update(session_tools_baseline_entries(session_tools))
     _add_tree(entries, source_root / "cold", ".codex/base/cold")
     _add_tree(
         entries,
@@ -479,6 +512,19 @@ def _build_release_from_export(
         for name in entries
         if name.startswith((".agents/skills/", ".codex/agents/"))
     )
+    skill_directories = sorted(
+        {
+            str(PurePosixPath(*PurePosixPath(name).parts[:3]))
+            for name in individually_managed
+            if name.startswith(".agents/skills/")
+        }
+    )
+    baseline = {
+        "manifest_path": "session-tools-baseline/session-tools-manifest.json",
+        "manifest_sha256": _sha256_bytes(session_tools.manifest_bytes),
+        "tools": session_tools.manifest["tools"],
+        "retired_tool_ids": [],
+    }
     package_manifest = {
         "schema_version": 1,
         "target": "codex",
@@ -489,11 +535,14 @@ def _build_release_from_export(
         },
         "foundation_engine_version": foundation_version,
         "managed_surface": {
-            "exact_directories": [
-                ".codex/base/cold",
-                ".codex/base/foundation",
-                ".codex/base/runtime",
-            ],
+            "exact_directories": sorted(
+                [
+                    ".codex/base/cold",
+                    ".codex/base/foundation",
+                    ".codex/base/runtime",
+                    *skill_directories,
+                ]
+            ),
             "replace_files": sorted(
                 individually_managed
                 + [
@@ -527,6 +576,7 @@ def _build_release_from_export(
             "scope": "current-user",
             "set": [],
         },
+        "session_tools_baseline": baseline,
         "files": package_files,
     }
     package_manifest_bytes = _json_bytes(package_manifest)
@@ -556,6 +606,7 @@ def _build_release_from_export(
         },
         "package_manifest_sha256": _sha256_bytes(package_manifest_bytes),
         "components_lock_sha256": _sha256_bytes(component_lock_bytes),
+        "session_tools_asset": session_tools_asset_record(session_tools),
         "requires": {
             "immutable_release": True,
             "release_attestation": True,
@@ -568,6 +619,12 @@ def _build_release_from_export(
             ],
         },
     }
+    validate_session_tools_release_binding(
+        release_manifest=release_manifest,
+        package_manifest=package_manifest,
+        session_asset_path=session_tools.zip_path,
+        package_archive_path=zip_path,
+    )
     manifest_path = dist_root / "release-manifest.json"
     lock_path = dist_root / "components.lock.json"
     manifest_path.write_bytes(_json_bytes(release_manifest))

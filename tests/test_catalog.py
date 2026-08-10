@@ -50,6 +50,7 @@ EXPECTED_SKILL_IDS = {
     "revit-family-generator-ru",
     "revit-testbed",
     "ru-gov-access",
+    "ru-writing-style",
     "skill-development",
     "spec-writer",
     "stroy-formatting",
@@ -72,7 +73,7 @@ def test_catalog_exposes_exact_native_capability_set(repo_root):
     assert {item["id"] for item in catalog["agents"]} == EXPECTED_AGENT_IDS
     assert {item["id"] for item in catalog["skills"]} == EXPECTED_SKILL_IDS
     assert len(catalog["agents"]) == 16
-    assert len(catalog["skills"]) == 37
+    assert len(catalog["skills"]) == 38
 
 
 def test_catalog_metadata_fits_worst_case_discovery_budget(repo_root):

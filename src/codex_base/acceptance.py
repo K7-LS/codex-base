@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 import yaml
 
 from .catalog import load_catalog
+from .session_tools import validate_session_tools_asset_record
 from .token_audit import audit_static_context
 
 
@@ -249,7 +250,18 @@ def release_binding_from_manifest(
         raise ValueError(
             f"release manifest lacks binding fields: {', '.join(missing)}"
         )
-    return {key: manifest[key] for key in required}
+    binding = {key: manifest[key] for key in required}
+    if "session_tools_asset" in manifest:
+        version = manifest["version"]
+        if not isinstance(version, str) or not version:
+            raise ValueError("session tools release version is invalid")
+        binding["session_tools_asset"] = validate_session_tools_asset_record(
+            manifest["session_tools_asset"],
+            expected_version=version,
+        )
+        if manifest["tag"] != f"codex-v{version}":
+            raise ValueError("session tools release tag and version differ")
+    return binding
 
 
 def evidence_body_sha256(evidence: dict[str, object]) -> str:
@@ -276,9 +288,9 @@ def write_acceptance_evidence(
         counts
         == {
             "agents": 16,
-            "capability_skills": 37,
+            "capability_skills": 38,
             "control_skills": 1,
-            "cold": 25,
+            "cold": 26,
         }
         and structured["status"] == "PASS"
         and secrets["status"] == "PASS"

@@ -60,9 +60,9 @@ def test_component_lock_covers_all_vendored_runtime_components(repo_root):
     assert lock["target"] == "codex"
     assert lock["version"] == "0.1.0"
     assert len(lock["components"]["agents"]) == 16
-    assert len(lock["components"]["skills"]) == 37
+    assert len(lock["components"]["skills"]) == 38
     assert len(lock["components"]["control_skills"]) == 1
-    assert len(lock["components"]["cold"]) == 25
+    assert len(lock["components"]["cold"]) == 26
     assert len(lock["components"]["runtime"]) == 1
     runtime_paths = {
         row["path"]
@@ -140,6 +140,8 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
             )
             == 37
         )
+        assert ".agents/skills/ru-writing-style/SKILL.md" not in names
+        assert "session-tools-baseline/tools/ru-writing-style/SKILL.md" in names
         assert not any("/tests/" in name or "__pycache__" in name for name in names)
 
         package_manifest = json.loads(
@@ -151,11 +153,29 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
         }
         assert "supported_codex_client" not in package_manifest
         managed_surface = package_manifest["managed_surface"]
-        assert managed_surface["exact_directories"] == [
-            ".codex/base/cold",
-            ".codex/base/foundation",
-            ".codex/base/runtime",
-        ]
+        package_skill_directories = sorted(
+            {
+                "/".join(name.split("/")[:3])
+                for name in names
+                if name.startswith(".agents/skills/")
+            }
+        )
+        assert managed_surface["exact_directories"] == sorted(
+            [
+                ".codex/base/cold",
+                ".codex/base/foundation",
+                ".codex/base/runtime",
+                *package_skill_directories,
+            ]
+        )
+        assert ".agents/skills" not in managed_surface["exact_directories"]
+        assert ".agents/skills/sync-base" in managed_surface["exact_directories"]
+        assert ".agents/skills/ru-writing-style" not in managed_surface["exact_directories"]
+        assert all(
+            len(path.split("/")) == 3
+            for path in managed_surface["exact_directories"]
+            if path.startswith(".agents/skills/")
+        )
         assert managed_surface["merge_toml_files"] == [
             ".codex/config.toml"
         ]
@@ -195,6 +215,11 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
             "scope": "current-user",
             "set": [],
         }
+        baseline = package_manifest["session_tools_baseline"]
+        assert baseline["manifest_path"] == (
+            "session-tools-baseline/session-tools-manifest.json"
+        )
+        assert baseline["retired_tool_ids"] == []
         assert archive.read(
             ".codex/base/components.lock.json"
         ) == first.component_lock_path.read_bytes()
@@ -310,5 +335,5 @@ def test_migration_source_is_pinned_and_complete(repo_root):
     assert source["source"]["commit"] == "d263065d902000a032c87bd31175889168f616bc"
     assert source["source"]["tree"] == "7e3fda8ff712e22bb1d5a2bb533bd7a6998cc474"
     assert len(source["inventory"]["agents"]) == 16
-    assert len(source["inventory"]["skills"]) == 37
-    assert len(source["inventory"]["cold"]) == 25
+    assert len(source["inventory"]["skills"]) == 38
+    assert len(source["inventory"]["cold"]) == 26

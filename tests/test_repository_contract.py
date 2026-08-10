@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import ast
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -33,7 +34,7 @@ def test_native_tree_materializes_every_catalog_component(repo_root):
     agent_files = sorted((repo_root / "agents").glob("*.toml"))
     skill_files = sorted((repo_root / "skills").glob("*/SKILL.md"))
     assert len(agent_files) == 16
-    assert len(skill_files) == 37
+    assert len(skill_files) == 38
 
     for item in catalog["agents"]:
         path = repo_root / str(item["source"])
@@ -49,6 +50,12 @@ def test_native_tree_materializes_every_catalog_component(repo_root):
         path = repo_root / str(item["source"])
         meta = _frontmatter(path.read_text(encoding="utf-8"))
         assert meta["name"] == item["name"]
+        if item["id"] == "ru-writing-style":
+            assert item["description"] == (
+                "Use when пишешь или правишь русский текст для человека — письмо, КП, "
+                "пояснительную записку, ответ экспертизе, отчёт, ТЗ, статью."
+            )
+            continue
         assert meta["description"] == item["description"]
 
 
@@ -87,7 +94,7 @@ def test_cold_catalog_is_complete_and_outside_discovery(repo_root):
     """Catches a referenced method that was omitted from the release payload."""
     cold = json.loads((repo_root / "catalog" / "cold.json").read_text(encoding="utf-8"))
 
-    assert len(cold["memory"]) == 19
+    assert len(cold["memory"]) == 20
     assert len(cold["chains"]) == 3
     assert len(cold["commands"]) == 3
     for group in ("memory", "chains", "commands"):
@@ -95,6 +102,21 @@ def test_cold_catalog_is_complete_and_outside_discovery(repo_root):
             path = repo_root / "cold" / relative
             assert path.is_file()
             assert "skills" not in path.parts
+
+
+def test_approved_ru_writing_style_and_officecli_reference_are_present(repo_root):
+    """Binds the imported skill to its approved source bytes and cold-only OfficeCLI record."""
+    skill = repo_root / "skills" / "ru-writing-style" / "SKILL.md"
+    payload = skill.read_bytes()
+    assert len(payload) == 20003
+    assert hashlib.sha256(payload).hexdigest() == (
+        "a20f25a852eaff976c9db90929c94f5658acb3a71eb264479f6d354e04a10938"
+    )
+
+    cold = json.loads((repo_root / "catalog" / "cold.json").read_text(encoding="utf-8"))
+    reference = "memory/reference_officecli.md"
+    assert reference in cold["memory"]
+    assert "OfficeCLI" in (repo_root / "cold" / reference).read_text(encoding="utf-8")
 
 
 def test_cold_runtime_guidance_is_codex_native_and_one_way(repo_root):

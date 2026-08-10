@@ -455,23 +455,30 @@ function Assert-LlmReleaseFiles {
             $foundationVersion + '/'
         )
         $foundationPayloads = [ordered]@{}
-        foreach ($name in @(
-            'VERSION',
-            'foundation.ps1',
-            'engine-manifest.json'
-        )) {
-            $entryName = $foundationPrefix + $name
+        $foundationRows = @($package.files | Where-Object {
+            ([string]$_.path).StartsWith(
+                $foundationPrefix,
+                [StringComparison]::Ordinal
+            )
+        } | Sort-Object { [string]$_.path })
+        if ($foundationRows.Count -lt 3) {
+            throw 'Foundation package inventory is incomplete.'
+        }
+        foreach ($row in $foundationRows) {
+            $entryName = [string]$row.path
+            $name = $entryName.Substring($foundationPrefix.Length)
+            if ($name -notmatch '^[A-Za-z0-9._/-]+$' -or
+                $name.StartsWith('/') -or $name.EndsWith('/') -or
+                @($name.Split('/') | Where-Object { $_ -in @('', '.', '..') }).Count -ne 0) {
+                throw 'Foundation package path is unsafe.'
+            }
             $bytes = Read-LlmZipEntryBytes `
                 -Archive $archive `
                 -Name $entryName
-            $row = @($package.files | Where-Object {
-                [string]$_.path -ceq $entryName
-            })
-            if ($row.Count -ne 1 -or
-                [string]$row[0].sha256 -cne (
+            if ([string]$row.sha256 -cne (
                     Get-LlmSha256Bytes $bytes
                 ) -or
-                [long]$row[0].bytes -ne $bytes.Length) {
+                [long]$row.bytes -ne $bytes.Length) {
                 throw "Foundation package row differs: $name"
             }
             $foundationPayloads[$name] = $bytes
@@ -511,8 +518,17 @@ function Assert-LlmReleaseFiles {
     $foundationRoot = Join-Path $Directory 'verified-foundation'
     [IO.Directory]::CreateDirectory($foundationRoot) | Out-Null
     foreach ($name in $foundationPayloads.Keys) {
+        $destination = [IO.Path]::GetFullPath((
+            Join-Path $foundationRoot ([string]$name).Replace('/', '\')
+        ))
+        if (-not $destination.StartsWith(
+            [IO.Path]::GetFullPath($foundationRoot) + '\',
+            [StringComparison]::OrdinalIgnoreCase
+        )) { throw 'Foundation extraction escaped its root.' }
+        [IO.Directory]::CreateDirectory((Split-Path -Parent $destination)) |
+            Out-Null
         [IO.File]::WriteAllBytes(
-            (Join-Path $foundationRoot $name),
+            $destination,
             $foundationPayloads[$name]
         )
     }
@@ -728,9 +744,6 @@ function Invoke-LlmSyncMain {
             -Directory $temporary `
             -Tag $tag
         $clientVersion = Get-LlmClientVersion
-        if ($clientVersion -cne [string]$verified.client_version) {
-            throw 'Installed client version is not accepted by this release.'
-        }
         Invoke-LlmVerifiedWorkflow `
             -Verified $verified `
             -ClientVersion $clientVersion
