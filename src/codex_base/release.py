@@ -603,7 +603,6 @@ def _build_release_from_export(
             "id": "codex-cli",
             "supported_version": SUPPORTED_CODEX_CLIENT,
         },
-        "supported_codex_client": SUPPORTED_CODEX_CLIENT,
         "foundation_engine_version": foundation_version,
         "foundation_engine_manifest_sha256": foundation_manifest_sha256,
         "source": identity,
