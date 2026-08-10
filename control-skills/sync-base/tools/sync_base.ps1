@@ -661,13 +661,21 @@ function Invoke-LlmSyncMain {
     if ($null -eq (Get-Command gh -ErrorAction SilentlyContinue)) {
         throw 'GitHub CLI (gh) is required.'
     }
-    $connectionPath = Join-Path (
+    $installedConnectionPath = Join-Path (
         [IO.Path]::GetFullPath($TargetHome)
     ) (
         ([string]$script:LlmSyncPolicy.install_root).Replace('/', '\') +
         '\base\runtime\connection.ps1'
     )
-    if (-not (Test-Path -LiteralPath $connectionPath -PathType Leaf)) {
+    $connectionPath = @(
+        $installedConnectionPath,
+        (Join-Path (Split-Path -Parent $PSScriptRoot) `
+            'runtime\connection.ps1'),
+        (Join-Path $PSScriptRoot '..\..\..\runtime\connection.ps1')
+    ) | Where-Object {
+        Test-Path -LiteralPath $_ -PathType Leaf
+    } | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace([string]$connectionPath)) {
         throw 'Installed connection runtime is missing.'
     }
     . $connectionPath

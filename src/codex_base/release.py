@@ -483,6 +483,9 @@ def _build_release_from_export(
         excluded_roots=session_tool_ids,
     )
     _add_tree(entries, source_root / "control-skills", ".agents/skills")
+    entries[".agents/skills/sync-base/runtime/connection.ps1"] = (
+        source_root / "runtime" / "connection.ps1"
+    ).read_bytes()
     entries.update(session_tools_baseline_entries(session_tools))
     _add_tree(entries, source_root / "cold", ".codex/base/cold")
     _add_tree(
@@ -512,6 +515,11 @@ def _build_release_from_export(
         for name in entries
         if name.startswith((".agents/skills/", ".codex/agents/"))
     )
+    replace_files = [
+        name
+        for name in individually_managed
+        if not name.startswith(".agents/skills/")
+    ]
     skill_directories = sorted(
         {
             str(PurePosixPath(*PurePosixPath(name).parts[:3]))
@@ -544,7 +552,7 @@ def _build_release_from_export(
                 ]
             ),
             "replace_files": sorted(
-                individually_managed
+                replace_files
                 + [
                     ".codex/AGENTS.md",
                     ".codex/base/VERSION",
