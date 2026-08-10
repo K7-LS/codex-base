@@ -1,8 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$PolicyPath = (
-        Join-Path (Split-Path -Parent $PSScriptRoot) 'sync-policy.json'
-    ),
+    [string]$PolicyPath = '',
     [string]$TargetHome = $env:USERPROFILE,
     [switch]$Check,
     [switch]$LibraryMode
@@ -13,6 +11,12 @@ $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object Text.UTF8Encoding($false)
 [Console]::OutputEncoding = $Utf8NoBom
 $OutputEncoding = $Utf8NoBom
+
+if ([string]::IsNullOrWhiteSpace($PolicyPath)) {
+    $PolicyPath = Join-Path `
+        (Split-Path -Parent $PSScriptRoot) `
+        'sync-policy.json'
+}
 
 # Allowed remote operations:
 # gh release verify
@@ -631,7 +635,10 @@ function Invoke-LlmVerifiedWorkflow {
                     )
                 }
             }
-            throw "Foundation $command failed."
+            throw (
+                "Foundation $command failed: " +
+                [string]$result.output
+            )
         }
         if ($command -ceq 'install') {
             $installed = $true
