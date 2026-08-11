@@ -5,6 +5,3 @@ check_for_update_on_startup = false
 
 [features]
 hooks = true
-
-[agents]
-enabled = true
