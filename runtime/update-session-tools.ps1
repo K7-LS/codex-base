@@ -614,7 +614,8 @@ function Assert-ReleaseManifest {
         'foundation_engine_version',
         'foundation_engine_manifest_sha256', 'source', 'asset',
         'package_manifest_sha256', 'components_lock_sha256',
-        'session_tools_asset', 'requires'
+        'session_tools_asset', 'requires', 'acceptance_evidence_sha256',
+        'promoted_from_candidate_manifest_sha256'
     ) 'INVALID_RELEASE_MANIFEST'
     if (-not (Test-ExactInteger $Manifest.schema_version) -or $Manifest.schema_version -ne 1 -or
         [string]$Manifest.target -cne $script:Target -or [string]$Manifest.version -cne $Version -or
@@ -644,7 +645,8 @@ function Assert-ReleaseManifest {
     ) 'INVALID_RELEASE_MANIFEST'
     foreach ($name in @(
         'foundation_engine_manifest_sha256', 'package_manifest_sha256',
-        'components_lock_sha256'
+        'components_lock_sha256', 'acceptance_evidence_sha256',
+        'promoted_from_candidate_manifest_sha256'
     )) {
         if (-not (Test-LowerSha256 $Manifest.$name)) { throw 'INVALID_RELEASE_MANIFEST' }
     }
