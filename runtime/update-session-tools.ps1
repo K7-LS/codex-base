@@ -16,7 +16,11 @@ $script:Repository = 'daniileliseev1337/codex-base'
 $script:MaxZipBytes = 10MB
 $script:MaxExpandedBytes = 8MB
 $script:MaxFileBytes = 1MB
-$script:AllowedExtensions = @('.json', '.md', '.toml', '.txt', '.yaml', '.yml')
+$script:AllowedExtensions = @(
+    '.docx', '.js', '.json', '.lsp', '.md', '.patch', '.ps1', '.py',
+    '.tmpl', '.toml', '.txt', '.xlsx', '.yaml', '.yml'
+)
+$script:AllowedSpecialNames = @('.gitkeep', '.graphify_version')
 
 [Console]::OutputEncoding = $script:Utf8NoBom
 $OutputEncoding = $script:Utf8NoBom
@@ -480,35 +484,43 @@ function Assert-SessionManifest {
     }
     $tools = @()
     foreach ($item in $Manifest.tools) { $tools += $item }
-    if ($tools.Count -ne 1) { throw 'BLOCKED_MULTI_TOOL_ASSET' }
-    $tool = $tools[0]
-    Assert-ExactProperties $tool @('id', 'files') 'INVALID_SESSION_MANIFEST'
-    if ([string]$tool.id -cne 'ru-writing-style' -or
-        [string]$tool.id -cnotmatch '^[A-Za-z0-9][A-Za-z0-9-]{0,63}$') { throw 'INVALID_TOOL_ID' }
-    $files = @()
-    foreach ($item in $tool.files) { $files += $item }
-    if ($files.Count -lt 1 -or $files.Count -gt 256) { throw 'INVALID_SESSION_MANIFEST' }
-    $seen = New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    if ($tools.Count -lt 1 -or $tools.Count -gt 64) { throw 'INVALID_SESSION_MANIFEST' }
     $total = 0L
-    $previous = $null
-    foreach ($file in $files) {
-        Assert-ExactProperties $file @('path', 'sha256', 'bytes') 'INVALID_SESSION_MANIFEST'
-        $path = [string]$file.path
-        if (-not (Test-ExactInteger $file.bytes)) { throw 'INVALID_SESSION_MANIFEST' }
-        $size = [long]$file.bytes
-        if ([string]::IsNullOrWhiteSpace($path) -or $path.Contains('\') -or $path.StartsWith('/') -or
-            $path.Contains(':') -or @($path.Split('/')) -contains '..' -or @($path.Split('/')) -contains '.' -or
-            @($path.Split('/')) -contains '' -or
-            [IO.Path]::GetExtension($path).ToLowerInvariant() -notin $script:AllowedExtensions -or
-            $size -lt 0 -or $size -gt $script:MaxFileBytes -or -not (Test-LowerSha256 $file.sha256) -or
-            -not $seen.Add($path) -or ($null -ne $previous -and [StringComparer]::Ordinal.Compare($previous, $path) -ge 0)) {
-            throw 'INVALID_SESSION_MANIFEST'
+    $fileCount = 0
+    $previousTool = $null
+    foreach ($tool in $tools) {
+        Assert-ExactProperties $tool @('id', 'files') 'INVALID_SESSION_MANIFEST'
+        if ([string]$tool.id -cnotmatch '^[A-Za-z0-9][A-Za-z0-9-]{0,63}$' -or
+            ($null -ne $previousTool -and [StringComparer]::Ordinal.Compare($previousTool, [string]$tool.id) -ge 0)) {
+            throw 'INVALID_TOOL_ID'
         }
-        $previous = $path
-        $total += $size
+        $previousTool = [string]$tool.id
+        $files = @($tool.files)
+        if ($files.Count -lt 1 -or $files.Count -gt 512) { throw 'INVALID_SESSION_MANIFEST' }
+        $seen = New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+        $previous = $null
+        foreach ($file in $files) {
+            Assert-ExactProperties $file @('path', 'sha256', 'bytes') 'INVALID_SESSION_MANIFEST'
+            $path = [string]$file.path
+            if (-not (Test-ExactInteger $file.bytes)) { throw 'INVALID_SESSION_MANIFEST' }
+            $size = [long]$file.bytes
+            $leaf = [IO.Path]::GetFileName($path)
+            if ([string]::IsNullOrWhiteSpace($path) -or $path.Contains('\') -or $path.StartsWith('/') -or
+                $path.Contains(':') -or @($path.Split('/')) -contains '..' -or @($path.Split('/')) -contains '.' -or
+                @($path.Split('/')) -contains '' -or
+                ([IO.Path]::GetExtension($path).ToLowerInvariant() -notin $script:AllowedExtensions -and
+                    $leaf -notin $script:AllowedSpecialNames) -or
+                $size -lt 0 -or $size -gt $script:MaxFileBytes -or -not (Test-LowerSha256 $file.sha256) -or
+                -not $seen.Add($path) -or ($null -ne $previous -and [StringComparer]::Ordinal.Compare($previous, $path) -ge 0)) {
+                throw 'INVALID_SESSION_MANIFEST'
+            }
+            $previous = $path
+            $total += $size
+            $fileCount++
+        }
     }
-    if ($total -gt $script:MaxExpandedBytes) { throw 'INVALID_SESSION_MANIFEST' }
-    return $tool
+    if ($fileCount -gt 512 -or $total -gt $script:MaxExpandedBytes) { throw 'INVALID_SESSION_MANIFEST' }
+    return $tools
 }
 
 function Read-SessionArchive {
@@ -526,7 +538,7 @@ function Read-SessionArchive {
     $archive = [IO.Compression.ZipFile]::OpenRead($Path)
     try {
         $entries = @($archive.Entries)
-        if ($entries.Count -gt 257) { throw 'INVALID_SESSION_ASSET' }
+        if ($entries.Count -gt 513) { throw 'INVALID_SESSION_ASSET' }
         $expanded = ($entries | Measure-Object -Property Length -Sum).Sum
         if ([long]$expanded -gt $script:MaxExpandedBytes) { throw 'INVALID_SESSION_ASSET' }
         $map = @{}
@@ -553,41 +565,42 @@ function Read-SessionArchive {
         finally { $manifestStream.Dispose() }
         if ((Get-Sha256Bytes $manifestBytes) -cne [string]$Asset.manifest_sha256) { throw 'INVALID_SESSION_MANIFEST' }
         $manifest = ConvertFrom-StrictJsonBytes $manifestBytes
-        $tool = Assert-SessionManifest $manifest $Tag $Version
-        $files = @()
-        foreach ($item in $tool.files) { $files += $item }
-        if (-not (Test-ExactInteger $Asset.tool_count) -or [long]$Asset.tool_count -ne 1) {
-            throw 'BLOCKED_MULTI_TOOL_ASSET'
+        $tools = @(Assert-SessionManifest $manifest $Tag $Version)
+        if (-not (Test-ExactInteger $Asset.tool_count) -or [long]$Asset.tool_count -ne $tools.Count) {
+            throw 'INVALID_SESSION_ASSET'
         }
-        if (-not (Test-ExactInteger $Asset.file_count) -or [long]$Asset.file_count -ne $files.Count) {
+        $fileCount = @($tools | ForEach-Object { @($_.files).Count } | Measure-Object -Sum).Sum
+        if (-not (Test-ExactInteger $Asset.file_count) -or [long]$Asset.file_count -ne $fileCount) {
             throw 'INVALID_SESSION_ASSET'
         }
         $expectedNames = New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
         [void]$expectedNames.Add('session-tools-manifest.json')
         $payloads = [ordered]@{}
-        foreach ($file in $files) {
-            $name = 'tools/' + [string]$tool.id + '/' + [string]$file.path
-            [void]$expectedNames.Add($name)
-            if (-not $map.ContainsKey($name)) { throw 'INVALID_SESSION_ASSET' }
-            $stream = $map[$name].Open()
-            try {
-                $memory = New-Object IO.MemoryStream
-                $stream.CopyTo($memory)
-                $bytes = $memory.ToArray()
-                $memory.Dispose()
+        foreach ($tool in $tools) {
+            foreach ($file in @($tool.files)) {
+                $name = 'tools/' + [string]$tool.id + '/' + [string]$file.path
+                [void]$expectedNames.Add($name)
+                if (-not $map.ContainsKey($name)) { throw 'INVALID_SESSION_ASSET' }
+                $stream = $map[$name].Open()
+                try {
+                    $memory = New-Object IO.MemoryStream
+                    $stream.CopyTo($memory)
+                    $bytes = $memory.ToArray()
+                    $memory.Dispose()
+                }
+                finally { $stream.Dispose() }
+                if ($bytes.Length -ne [long]$file.bytes -or (Get-Sha256Bytes $bytes) -cne [string]$file.sha256) {
+                    throw 'INVALID_SESSION_ASSET'
+                }
+                $payloads[[string]$tool.id + '/' + [string]$file.path] = $bytes
             }
-            finally { $stream.Dispose() }
-            if ($bytes.Length -ne [long]$file.bytes -or (Get-Sha256Bytes $bytes) -cne [string]$file.sha256) {
-                throw 'INVALID_SESSION_ASSET'
-            }
-            $payloads[[string]$file.path] = $bytes
         }
         if ($map.Count -ne $expectedNames.Count) { throw 'INVALID_SESSION_ASSET' }
         foreach ($name in $map.Keys) { if (-not $expectedNames.Contains($name)) { throw 'INVALID_SESSION_ASSET' } }
         return [pscustomobject][ordered]@{
             manifest = $manifest
             manifest_bytes = $manifestBytes
-            tool = $tool
+            tools = $tools
             payloads = $payloads
         }
     }
@@ -627,7 +640,7 @@ function Assert-ReleaseManifest {
         'name', 'sha256', 'bytes', 'manifest_sha256', 'tool_count', 'file_count'
     ) 'INVALID_RELEASE_MANIFEST'
     Assert-ExactProperties $Manifest.requires @(
-        'immutable_release', 'release_attestation'
+        'immutable_release', 'release_attestation', 'verification_commands'
     ) 'INVALID_RELEASE_MANIFEST'
     foreach ($name in @(
         'foundation_engine_manifest_sha256', 'package_manifest_sha256',
@@ -644,10 +657,11 @@ function Assert-ReleaseManifest {
         [long]$Manifest.session_tools_asset.bytes -le 0 -or
         [long]$Manifest.session_tools_asset.bytes -gt $script:MaxZipBytes -or
         -not (Test-ExactInteger $Manifest.session_tools_asset.tool_count) -or
-        [long]$Manifest.session_tools_asset.tool_count -ne 1 -or
+        [long]$Manifest.session_tools_asset.tool_count -lt 1 -or
+        [long]$Manifest.session_tools_asset.tool_count -gt 64 -or
         -not (Test-ExactInteger $Manifest.session_tools_asset.file_count) -or
         [long]$Manifest.session_tools_asset.file_count -lt 1 -or
-        [long]$Manifest.session_tools_asset.file_count -gt 256 -or
+        [long]$Manifest.session_tools_asset.file_count -gt 512 -or
         [string]$Manifest.session_tools_asset.name -cne ('session-tools-codex-' + $Version + '.zip') -or
         $Manifest.requires.immutable_release -isnot [bool] -or
         $Manifest.requires.release_attestation -isnot [bool] -or
@@ -660,10 +674,6 @@ function Assert-ReleaseManifest {
         [string]$Manifest.requires.verification_commands[1] -cne
             ('gh release verify-asset ' + $Tag + ' codex-base-' + $Version + '.zip -R ' + $script:Repository) -or
         [string]$Manifest.foundation_engine_version -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
-        if ((Test-ExactInteger $Manifest.session_tools_asset.tool_count) -and
-            ([long]$Manifest.session_tools_asset.tool_count) -ne 1) {
-            throw 'BLOCKED_MULTI_TOOL_ASSET'
-        }
         throw 'INVALID_RELEASE_MANIFEST'
     }
 }
@@ -680,13 +690,17 @@ function Get-ExpectedDirectoryFingerprint {
 }
 
 function Assert-CurrentState {
-    param([string]$Path, [string]$Destination)
+    param([string]$Path, [string]$SkillsRoot)
     $state = Read-JsonObject $Path
-    Assert-ExactProperties $state @(
+    $stateFields = @(
         'schema_version', 'target', 'release_tag', 'release_version',
         'release_manifest_sha256', 'session_manifest_sha256', 'verified_at', 'tools'
-    ) 'BLOCKED_STATE_DRIFT'
-    if (-not (Test-ExactInteger $state.schema_version) -or $state.schema_version -ne 1 -or
+    )
+    if ((Test-ExactInteger $state.schema_version) -and $state.schema_version -eq 2) {
+        $stateFields += 'complete'
+    }
+    Assert-ExactProperties $state $stateFields 'BLOCKED_STATE_DRIFT'
+    if (-not (Test-ExactInteger $state.schema_version) -or $state.schema_version -notin @(1, 2) -or
         $state.target -isnot [string] -or
         [string]$state.target -cne $script:Target -or
         $state.release_tag -isnot [string] -or
@@ -697,6 +711,7 @@ function Assert-CurrentState {
         -not (Test-LowerSha256 $state.session_manifest_sha256) -or
         $state.verified_at -isnot [string] -or
         [string]::IsNullOrWhiteSpace([string]$state.verified_at) -or
+        ($state.schema_version -eq 2 -and $state.complete -isnot [bool]) -or
         $state.tools -isnot [Array]) {
         throw 'BLOCKED_STATE_DRIFT'
     }
@@ -707,67 +722,100 @@ function Assert-CurrentState {
     ) -or $parsedTime.Offset -ne [TimeSpan]::Zero) { throw 'BLOCKED_STATE_DRIFT' }
     $tools = @()
     foreach ($item in $state.tools) { $tools += $item }
-    if ($tools.Count -ne 1) { throw 'BLOCKED_STATE_DRIFT' }
-    $tool = $tools[0]
-    Assert-ExactProperties $tool @('id', 'destination', 'ownership_marker', 'files') 'BLOCKED_STATE_DRIFT'
-    if ($tool.id -isnot [string] -or [string]$tool.id -cne 'ru-writing-style' -or
-        $tool.destination -isnot [string] -or
-        [IO.Path]::GetFullPath([string]$tool.destination) -cne [IO.Path]::GetFullPath($Destination) -or
-        $tool.ownership_marker -isnot [string] -or
-        $tool.files -isnot [Array] -or
-        [string]$tool.ownership_marker -cne 'session-tools-v1:codex:ru-writing-style') {
-        throw 'BLOCKED_STATE_DRIFT'
-    }
-    $files = @()
-    foreach ($item in $tool.files) { $files += $item }
-    if ($files.Count -lt 1 -or $files.Count -gt 256) { throw 'BLOCKED_STATE_DRIFT' }
-    $seen = New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-    $previous = $null
+    if ($tools.Count -lt 1 -or $tools.Count -gt 64) { throw 'BLOCKED_STATE_DRIFT' }
+    $previousTool = $null
     $total = 0L
-    foreach ($file in $files) {
-        Assert-ExactProperties $file @('path', 'sha256', 'bytes') 'BLOCKED_STATE_DRIFT'
-        $path = [string]$file.path
-        if ($file.path -isnot [string] -or -not (Test-ExactInteger $file.bytes)) {
+    $fileCount = 0
+    foreach ($tool in $tools) {
+        Assert-ExactProperties $tool @('id', 'destination', 'ownership_marker', 'files') 'BLOCKED_STATE_DRIFT'
+        $destination = Join-Path $SkillsRoot ([string]$tool.id)
+        if ($tool.id -isnot [string] -or [string]$tool.id -cnotmatch '^[A-Za-z0-9][A-Za-z0-9-]{0,63}$' -or
+            ($null -ne $previousTool -and [StringComparer]::Ordinal.Compare($previousTool, [string]$tool.id) -ge 0) -or
+            $tool.destination -isnot [string] -or
+            [IO.Path]::GetFullPath([string]$tool.destination) -cne [IO.Path]::GetFullPath($destination) -or
+            $tool.ownership_marker -isnot [string] -or
+            $tool.files -isnot [Array] -or
+            [string]$tool.ownership_marker -cne ('session-tools-v1:codex:' + [string]$tool.id)) {
             throw 'BLOCKED_STATE_DRIFT'
         }
-        $size = [long]$file.bytes
-        if ([string]::IsNullOrWhiteSpace($path) -or $path.Contains('\') -or $path.StartsWith('/') -or
-            $path.Contains(':') -or @($path.Split('/')) -contains '..' -or
-            @($path.Split('/')) -contains '.' -or @($path.Split('/')) -contains '' -or
-            [IO.Path]::GetExtension($path).ToLowerInvariant() -notin $script:AllowedExtensions -or
-            $size -lt 0 -or $size -gt $script:MaxFileBytes -or
-            -not (Test-LowerSha256 $file.sha256) -or -not $seen.Add($path) -or
-            ($null -ne $previous -and [StringComparer]::Ordinal.Compare($previous, $path) -ge 0)) {
+        $files = @($tool.files)
+        if ($files.Count -lt 1 -or $files.Count -gt 512) { throw 'BLOCKED_STATE_DRIFT' }
+        $seen = New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+        $previous = $null
+        foreach ($file in $files) {
+            Assert-ExactProperties $file @('path', 'sha256', 'bytes') 'BLOCKED_STATE_DRIFT'
+            $path = [string]$file.path
+            if ($file.path -isnot [string] -or -not (Test-ExactInteger $file.bytes)) {
+                throw 'BLOCKED_STATE_DRIFT'
+            }
+            $size = [long]$file.bytes
+            $leaf = [IO.Path]::GetFileName($path)
+            if ([string]::IsNullOrWhiteSpace($path) -or $path.Contains('\') -or $path.StartsWith('/') -or
+                $path.Contains(':') -or @($path.Split('/')) -contains '..' -or
+                @($path.Split('/')) -contains '.' -or @($path.Split('/')) -contains '' -or
+                ([IO.Path]::GetExtension($path).ToLowerInvariant() -notin $script:AllowedExtensions -and
+                    $leaf -notin $script:AllowedSpecialNames) -or
+                $size -lt 0 -or $size -gt $script:MaxFileBytes -or
+                -not (Test-LowerSha256 $file.sha256) -or -not $seen.Add($path) -or
+                ($null -ne $previous -and [StringComparer]::Ordinal.Compare($previous, $path) -ge 0)) {
+                throw 'BLOCKED_STATE_DRIFT'
+            }
+            $actualPath = Join-Path $destination $path.Replace('/', '\')
+            if (-not (Test-Path -LiteralPath $actualPath -PathType Leaf) -or
+                (Test-ReparseAtOrAbove $actualPath) -or
+                (Get-Item -LiteralPath $actualPath).Length -ne $size) {
+                throw 'BLOCKED_STATE_DRIFT'
+            }
+            $previous = $path
+            $total += $size
+            $fileCount++
+        }
+        if ((Get-Fingerprint $destination) -cne (Get-ExpectedDirectoryFingerprint $files)) {
             throw 'BLOCKED_STATE_DRIFT'
         }
-        $actualPath = Join-Path $Destination $path.Replace('/', '\')
-        if (-not (Test-Path -LiteralPath $actualPath -PathType Leaf) -or
-            (Test-ReparseAtOrAbove $actualPath) -or
-            (Get-Item -LiteralPath $actualPath).Length -ne $size) {
-            throw 'BLOCKED_STATE_DRIFT'
-        }
-        $previous = $path
-        $total += $size
+        $previousTool = [string]$tool.id
     }
-    if ($total -gt $script:MaxExpandedBytes) { throw 'BLOCKED_STATE_DRIFT' }
-    if ((Get-Fingerprint $Destination) -cne (Get-ExpectedDirectoryFingerprint $files)) {
-        throw 'BLOCKED_STATE_DRIFT'
-    }
+    if ($fileCount -gt 512 -or $total -gt $script:MaxExpandedBytes) { throw 'BLOCKED_STATE_DRIFT' }
     return $state
 }
 
 function Test-BaselineOwnership {
-    param([string]$UserRoot, [string]$Destination)
+    param([string]$UserRoot, [string]$Destination, [string]$ToolId)
     try {
         $baselinePath = Join-Path $UserRoot '.codex\base\runtime\session-tools-baseline.json'
         if (-not (Test-Path -LiteralPath $baselinePath -PathType Leaf)) { return $false }
         $baseline = Read-JsonObject $baselinePath
-        $tool = Assert-SessionManifest $baseline ([string]$baseline.release_tag) ([string]$baseline.base_version)
+        $tools = @(Assert-SessionManifest $baseline ([string]$baseline.release_tag) ([string]$baseline.base_version))
         if ([string]$baseline.release_tag -cne ('codex-v' + [string]$baseline.base_version)) { return $false }
+        $matching = @($tools | Where-Object { [string]$_.id -ceq $ToolId })
+        if ($matching.Count -ne 1) { return $false }
+        $tool = $matching[0]
         if ((Get-Fingerprint $Destination) -cne (Get-ExpectedDirectoryFingerprint $tool.files)) { return $false }
         return $true
     }
     catch { return $false }
+}
+
+function New-OwnedToolRecord {
+    param($Tool, [string]$SkillsRoot)
+    $destination = Join-Path $SkillsRoot ([string]$Tool.id)
+    return [ordered]@{
+        id = [string]$Tool.id
+        destination = [IO.Path]::GetFullPath($destination)
+        ownership_marker = 'session-tools-v1:codex:' + [string]$Tool.id
+        files = @($Tool.files)
+    }
+}
+
+function Test-ToolMatches {
+    param($Tool, [string]$SkillsRoot)
+    $destination = Join-Path $SkillsRoot ([string]$Tool.id)
+    return (Get-Fingerprint $destination) -ceq (Get-ExpectedDirectoryFingerprint $Tool.files)
+}
+
+function Get-SortedOwnedTools {
+    param([hashtable]$OwnedById)
+    return @($OwnedById.Values | Sort-Object { [string]$_.id })
 }
 
 function New-OperationMap {
@@ -1052,6 +1100,124 @@ function Write-ResultLog {
     catch { }
 }
 
+function Apply-VerifiedTool {
+    param(
+        $Bundle,
+        $Tool,
+        [object[]]$NextTools,
+        [bool]$Complete,
+        [bool]$WasOwned,
+        [string]$ReleasePath,
+        [string]$ReleaseTag,
+        [string]$VersionText,
+        [string]$UserRoot,
+        [string]$SkillsRoot,
+        [string]$StateRoot,
+        [string]$StatePath,
+        [string]$JournalPath,
+        [string]$ReceiptSha,
+        $Clock
+    )
+    $destination = Join-Path $SkillsRoot ([string]$Tool.id)
+    $previousDestinationHash = Get-Fingerprint $destination
+    if ($previousDestinationHash -ne 'absent' -and -not $WasOwned) {
+        if (-not (Test-BaselineOwnership $UserRoot $destination ([string]$Tool.id))) {
+            throw 'BLOCKED_UNMANAGED_COLLISION'
+        }
+    }
+    $transactionRoot = Join-Path $StateRoot ('transactions\' + [string]$Clock.transaction_id)
+    $staging = Join-Path $transactionRoot 'staging'
+    $previous = Join-Path $transactionRoot 'previous'
+    $previousStateHash = Get-Fingerprint $StatePath
+    $stateValue = [ordered]@{
+        schema_version = 2
+        target = $script:Target
+        release_tag = $ReleaseTag
+        release_version = $VersionText
+        release_manifest_sha256 = Get-Sha256File $ReleasePath
+        session_manifest_sha256 = Get-Sha256Bytes $Bundle.manifest_bytes
+        verified_at = [DateTimeOffset]::UtcNow.ToString('o')
+        complete = $Complete
+        tools = @($NextTools)
+    }
+    $stateBytes = ConvertTo-JsonBytes $stateValue
+    $expectedStateHash = Get-Sha256Bytes $stateBytes
+    $expectedDestinationHash = Get-ExpectedDirectoryFingerprint $Tool.files
+    $journal = [ordered]@{
+        schema_version = 1
+        target = $script:Target
+        transaction_id = [string]$Clock.transaction_id
+        phase = 'created'
+        receipt_sha256 = $ReceiptSha
+        start_tick = [long]$Clock.start_tick
+        mutation_cutoff_tick = [long]$Clock.mutation_cutoff_tick
+        kill_tick = [long]$Clock.kill_tick
+        hard_deadline_tick = [long]$Clock.hard_deadline_tick
+        stopwatch_frequency = [long]$Clock.stopwatch_frequency
+        previous_destination_sha256 = $previousDestinationHash
+        previous_state_sha256 = $previousStateHash
+        expected_staging_sha256 = $expectedDestinationHash
+        expected_destination_sha256 = $expectedDestinationHash
+        expected_state_sha256 = $expectedStateHash
+        staging_path = [IO.Path]::GetFullPath($staging)
+        previous_path = [IO.Path]::GetFullPath($previous)
+        destination_path = [IO.Path]::GetFullPath($destination)
+        state_path = [IO.Path]::GetFullPath($StatePath)
+        operations = New-OperationMap
+    }
+    if ([Diagnostics.Stopwatch]::GetTimestamp() -ge [long]$Clock.mutation_cutoff_tick) { throw 'DEADLINE_REACHED' }
+    Write-Journal $JournalPath $journal
+    try {
+        if ([Diagnostics.Stopwatch]::GetTimestamp() -ge [long]$Clock.mutation_cutoff_tick) { throw 'DEADLINE_REACHED' }
+        [IO.Directory]::CreateDirectory($staging) | Out-Null
+        foreach ($file in @($Tool.files)) {
+            if ([Diagnostics.Stopwatch]::GetTimestamp() -ge [long]$Clock.mutation_cutoff_tick) { throw 'DEADLINE_REACHED' }
+            $relative = [string]$file.path
+            $payloadKey = [string]$Tool.id + '/' + $relative
+            if (-not $Bundle.payloads.Contains($payloadKey)) { throw 'INVALID_SESSION_ASSET' }
+            $path = Join-Path $staging $relative.Replace('/', '\')
+            [IO.Directory]::CreateDirectory((Split-Path -Parent $path)) | Out-Null
+            [IO.File]::WriteAllBytes($path, [byte[]]$Bundle.payloads[$payloadKey])
+        }
+        if ((Get-Fingerprint $staging) -cne $expectedDestinationHash) { throw 'STAGING_MISMATCH' }
+        Set-JournalPhase $JournalPath $journal 'staged'
+        if ([Diagnostics.Stopwatch]::GetTimestamp() -ge [long]$Clock.mutation_cutoff_tick) { throw 'DEADLINE_REACHED' }
+
+        $journal.operations.move_destination_to_previous.intent = $true
+        Set-JournalPhase $JournalPath $journal 'move_destination_intent'
+        if ([Diagnostics.Stopwatch]::GetTimestamp() -ge [long]$Clock.mutation_cutoff_tick) { throw 'DEADLINE_REACHED' }
+        if (Test-Path -LiteralPath $destination) { [IO.Directory]::Move($destination, $previous) }
+        $journal.operations.move_destination_to_previous.applied = $true
+        Set-JournalPhase $JournalPath $journal 'move_destination_applied'
+
+        $journal.operations.move_staging_to_destination.intent = $true
+        Set-JournalPhase $JournalPath $journal 'move_staging_intent'
+        [IO.Directory]::CreateDirectory((Split-Path -Parent $destination)) | Out-Null
+        [IO.Directory]::Move($staging, $destination)
+        $journal.operations.move_staging_to_destination.applied = $true
+        Set-JournalPhase $JournalPath $journal 'move_staging_applied'
+
+        $journal.operations.write_state.intent = $true
+        Set-JournalPhase $JournalPath $journal 'state_write_intent'
+        Write-DurableBytes $StatePath $stateBytes
+        $journal.operations.write_state.applied = $true
+        Set-JournalPhase $JournalPath $journal 'state_write_applied'
+        Set-JournalPhase $JournalPath $journal 'committed'
+
+        Remove-SafeEntry $previous
+        if (Test-Path -LiteralPath $transactionRoot -PathType Container) {
+            try { [IO.Directory]::Delete($transactionRoot, $false) } catch { }
+        }
+        [IO.File]::Delete($JournalPath)
+    }
+    catch {
+        if ([Diagnostics.Stopwatch]::GetTimestamp() -lt [long]$Clock.kill_tick) {
+            [void](Invoke-JournalRecovery $StateRoot $UserRoot $Clock $ReceiptSha)
+        }
+        throw
+    }
+}
+
 function Invoke-Update {
     param($Clock)
     $userRoot = [IO.Path]::GetFullPath($env:USERPROFILE)
@@ -1101,11 +1267,14 @@ function Invoke-Update {
     }
     $latest = $stable | Sort-Object -Property version -Descending | Select-Object -First 1
     $statePath = Join-Path $stateRoot 'state.json'
-    $destination = Join-Path $userRoot '.agents\skills\ru-writing-style'
+    $skillsRoot = Join-Path $userRoot '.agents\skills'
+    $current = $null
     if (Test-Path -LiteralPath $statePath -PathType Leaf) {
-        $current = Assert-CurrentState $statePath $destination
+        $current = Assert-CurrentState $statePath $skillsRoot
         $currentVersion = [version][string]$current.release_version
-        if ($currentVersion -ge $latest.version) {
+        if ($currentVersion -gt $latest.version -or
+            ($currentVersion -eq $latest.version -and
+             ($current.schema_version -eq 1 -or $current.complete -eq $true))) {
             Write-ResultLog $stateRoot ([string]$latest.tag) 'NO_UPDATE' 'current'
             return $false
         }
@@ -1132,119 +1301,44 @@ function Invoke-Update {
         $bundle = Read-SessionArchive $assetPath $release.session_tools_asset ([string]$latest.tag) $versionText
         if ([Diagnostics.Stopwatch]::GetTimestamp() -ge [long]$Clock.mutation_cutoff_tick) { throw 'DEADLINE_REACHED' }
 
-        $tool = $bundle.tool
-        $destination = Join-Path $userRoot ('.agents\skills\' + [string]$tool.id)
-        $previousDestinationHash = Get-Fingerprint $destination
-        if ($previousDestinationHash -ne 'absent' -and -not (Test-Path -LiteralPath $statePath -PathType Leaf)) {
-            if (-not (Test-BaselineOwnership $userRoot $destination)) {
-                throw 'BLOCKED_UNMANAGED_COLLISION'
-            }
+        $ownedById = @{}
+        if ($null -ne $current) {
+            foreach ($owned in @($current.tools)) { $ownedById[[string]$owned.id] = $owned }
         }
-        $transactionRoot = Join-Path $stateRoot ('transactions\' + [string]$Clock.transaction_id)
-        $staging = Join-Path $transactionRoot 'staging'
-        $previous = Join-Path $transactionRoot 'previous'
-        $previousStateHash = Get-Fingerprint $statePath
-        $verifiedAt = [DateTimeOffset]::UtcNow.ToString('o')
-        $stateValue = [ordered]@{
-            schema_version = 1
-            target = $script:Target
-            release_tag = [string]$latest.tag
-            release_version = $versionText
-            release_manifest_sha256 = Get-Sha256File $releasePath
-            session_manifest_sha256 = Get-Sha256Bytes $bundle.manifest_bytes
-            verified_at = $verifiedAt
-            tools = @(
-                [ordered]@{
-                    id = [string]$tool.id
-                    destination = [IO.Path]::GetFullPath($destination)
-                    ownership_marker = 'session-tools-v1:codex:' + [string]$tool.id
-                    files = @($tool.files)
+        $pending = New-Object 'Collections.Generic.List[object]'
+        foreach ($tool in @($bundle.tools)) {
+            if (-not (Test-ToolMatches $tool $skillsRoot)) { $pending.Add($tool) }
+        }
+        if ($pending.Count -eq 0 -and $null -ne $current -and
+            $current.schema_version -eq 2 -and $current.complete -eq $false) {
+            $pending.Add(@($bundle.tools)[-1])
+        }
+        $updated = $false
+        for ($index = 0; $index -lt $pending.Count; $index++) {
+            $tool = $pending[$index]
+            $wasOwned = $ownedById.ContainsKey([string]$tool.id)
+            $ownedById[[string]$tool.id] = New-OwnedToolRecord $tool $skillsRoot
+            $isLast = $index -eq ($pending.Count - 1)
+            $allMatch = $true
+            if ($isLast) {
+                foreach ($expectedTool in @($bundle.tools)) {
+                    if ([string]$expectedTool.id -ceq [string]$tool.id) { continue }
+                    if (-not (Test-ToolMatches $expectedTool $skillsRoot)) { $allMatch = $false; break }
                 }
-            )
-        }
-        $stateBytes = ConvertTo-JsonBytes $stateValue
-        $expectedStateHash = Get-Sha256Bytes $stateBytes
-        $expectedDestinationHash = Get-ExpectedDirectoryFingerprint $tool.files
-        $journal = [ordered]@{
-            schema_version = 1
-            target = $script:Target
-            transaction_id = [string]$Clock.transaction_id
-            phase = 'created'
-            receipt_sha256 = $receiptSha
-            start_tick = [long]$Clock.start_tick
-            mutation_cutoff_tick = [long]$Clock.mutation_cutoff_tick
-            kill_tick = [long]$Clock.kill_tick
-            hard_deadline_tick = [long]$Clock.hard_deadline_tick
-            stopwatch_frequency = [long]$Clock.stopwatch_frequency
-            previous_destination_sha256 = $previousDestinationHash
-            previous_state_sha256 = $previousStateHash
-            expected_staging_sha256 = $expectedDestinationHash
-            expected_destination_sha256 = $expectedDestinationHash
-            expected_state_sha256 = $expectedStateHash
-            staging_path = [IO.Path]::GetFullPath($staging)
-            previous_path = [IO.Path]::GetFullPath($previous)
-            destination_path = [IO.Path]::GetFullPath($destination)
-            state_path = [IO.Path]::GetFullPath($statePath)
-            operations = New-OperationMap
-        }
-        if ([Diagnostics.Stopwatch]::GetTimestamp() -ge [long]$Clock.mutation_cutoff_tick) {
-            throw 'DEADLINE_REACHED'
-        }
-        Write-Journal $journalPath $journal
-        try {
-            if ([Diagnostics.Stopwatch]::GetTimestamp() -ge [long]$Clock.mutation_cutoff_tick) {
-                throw 'DEADLINE_REACHED'
             }
-            [IO.Directory]::CreateDirectory($staging) | Out-Null
-            foreach ($relative in $bundle.payloads.Keys) {
-                if ([Diagnostics.Stopwatch]::GetTimestamp() -ge [long]$Clock.mutation_cutoff_tick) {
-                    throw 'DEADLINE_REACHED'
-                }
-                $path = Join-Path $staging ([string]$relative).Replace('/', '\')
-                [IO.Directory]::CreateDirectory((Split-Path -Parent $path)) | Out-Null
-                [IO.File]::WriteAllBytes($path, [byte[]]$bundle.payloads[$relative])
-            }
-            if ((Get-Fingerprint $staging) -cne $expectedDestinationHash) { throw 'STAGING_MISMATCH' }
-            Set-JournalPhase $journalPath $journal 'staged'
-            if ([Diagnostics.Stopwatch]::GetTimestamp() -ge [long]$Clock.mutation_cutoff_tick) { throw 'DEADLINE_REACHED' }
-
-            $journal.operations.move_destination_to_previous.intent = $true
-            Set-JournalPhase $journalPath $journal 'move_destination_intent'
-            if ([Diagnostics.Stopwatch]::GetTimestamp() -ge [long]$Clock.mutation_cutoff_tick) {
-                throw 'DEADLINE_REACHED'
-            }
-            if (Test-Path -LiteralPath $destination) { [IO.Directory]::Move($destination, $previous) }
-            $journal.operations.move_destination_to_previous.applied = $true
-            Set-JournalPhase $journalPath $journal 'move_destination_applied'
-
-            $journal.operations.move_staging_to_destination.intent = $true
-            Set-JournalPhase $journalPath $journal 'move_staging_intent'
-            [IO.Directory]::CreateDirectory((Split-Path -Parent $destination)) | Out-Null
-            [IO.Directory]::Move($staging, $destination)
-            $journal.operations.move_staging_to_destination.applied = $true
-            Set-JournalPhase $journalPath $journal 'move_staging_applied'
-
-            $journal.operations.write_state.intent = $true
-            Set-JournalPhase $journalPath $journal 'state_write_intent'
-            Write-DurableBytes $statePath $stateBytes
-            $journal.operations.write_state.applied = $true
-            Set-JournalPhase $journalPath $journal 'state_write_applied'
-            Set-JournalPhase $journalPath $journal 'committed'
-
-            Remove-SafeEntry $previous
-            if (Test-Path -LiteralPath $transactionRoot -PathType Container) {
-                try { [IO.Directory]::Delete($transactionRoot, $false) } catch { }
-            }
-            [IO.File]::Delete($journalPath)
+            Apply-VerifiedTool -Bundle $bundle -Tool $tool -NextTools (Get-SortedOwnedTools $ownedById) `
+                -Complete ($isLast -and $allMatch) -WasOwned $wasOwned -ReleasePath $releasePath `
+                -ReleaseTag ([string]$latest.tag) -VersionText $versionText -UserRoot $userRoot `
+                -SkillsRoot $skillsRoot -StateRoot $stateRoot -StatePath $statePath `
+                -JournalPath $journalPath -ReceiptSha $receiptSha -Clock $Clock
+            $updated = $true
         }
-        catch {
-            if ([Diagnostics.Stopwatch]::GetTimestamp() -lt [long]$Clock.kill_tick) {
-                [void](Invoke-JournalRecovery $stateRoot $userRoot $Clock $receiptSha)
-            }
-            throw
+        if ($updated) {
+            Write-ResultLog $stateRoot ([string]$latest.tag) 'UPDATED' 'verified'
+            return $true
         }
-        Write-ResultLog $stateRoot ([string]$latest.tag) 'UPDATED' 'verified'
-        return $true
+        Write-ResultLog $stateRoot ([string]$latest.tag) 'NO_UPDATE' 'current'
+        return $false
     }
     finally {
         if (Test-Path -LiteralPath $downloadRoot -PathType Container) {

@@ -12,14 +12,30 @@ from typing import Any
 
 
 FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
-MAX_TOOLS = 32
-MAX_FILES = 256
+MAX_TOOLS = 64
+MAX_FILES = 512
 MAX_FILE_BYTES = 1024 * 1024
 MAX_EXPANDED_BYTES = 8 * 1024 * 1024
 MAX_ARCHIVE_BYTES = 10 * 1024 * 1024
 MANIFEST_NAME = "session-tools-manifest.json"
 BASELINE_MANIFEST_PATH = f"session-tools-baseline/{MANIFEST_NAME}"
-_ALLOWED_SUFFIXES = {".json", ".md", ".toml", ".txt", ".yaml", ".yml"}
+_ALLOWED_SUFFIXES = {
+    ".docx",
+    ".js",
+    ".json",
+    ".lsp",
+    ".md",
+    ".patch",
+    ".ps1",
+    ".py",
+    ".tmpl",
+    ".toml",
+    ".txt",
+    ".xlsx",
+    ".yaml",
+    ".yml",
+}
+_ALLOWED_SPECIAL_NAMES = {".gitkeep", ".graphify_version"}
 _TOOL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,63}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -84,8 +100,12 @@ def _validate_file_record(value: object) -> dict[str, object]:
     digest = value["sha256"]
     if not _is_safe_relative_path(path):
         raise ValueError("session tool file path is unsafe")
-    if PurePosixPath(str(path)).suffix.lower() not in _ALLOWED_SUFFIXES:
-        raise ValueError("session tool file extension is not declarative")
+    portable = PurePosixPath(str(path))
+    if (
+        portable.suffix.lower() not in _ALLOWED_SUFFIXES
+        and portable.name not in _ALLOWED_SPECIAL_NAMES
+    ):
+        raise ValueError("session tool file type is not portable")
     if not isinstance(size, int) or isinstance(size, bool) or size < 0:
         raise ValueError("session tool file size is invalid")
     if size > MAX_FILE_BYTES:
@@ -267,6 +287,10 @@ def _source_files(root: Path) -> list[Path]:
         current = queue.pop()
         for entry in os.scandir(current):
             path = Path(entry.path)
+            if entry.is_dir(follow_symlinks=False) and entry.name == "__pycache__":
+                continue
+            if entry.is_file(follow_symlinks=False) and path.suffix.lower() == ".pyc":
+                continue
             metadata = entry.stat(follow_symlinks=False)
             attributes = getattr(metadata, "st_file_attributes", 0)
             if stat.S_ISLNK(metadata.st_mode) or attributes & 0x400:
@@ -278,8 +302,11 @@ def _source_files(root: Path) -> list[Path]:
                 raise ValueError(f"session tool source is not a regular file: {path}")
             if metadata.st_mode & 0o111:
                 raise ValueError(f"session tool source contains executable: {path}")
-            if path.suffix.lower() not in _ALLOWED_SUFFIXES:
-                raise ValueError(f"session tool source extension is not declarative: {path}")
+            if (
+                path.suffix.lower() not in _ALLOWED_SUFFIXES
+                and path.name not in _ALLOWED_SPECIAL_NAMES
+            ):
+                raise ValueError(f"session tool source type is not portable: {path}")
             files.append(path)
     return sorted(files, key=lambda path: path.relative_to(root).as_posix())
 
@@ -304,10 +331,18 @@ def build_session_tools_bundle(
     dist_root: Path,
     base_version: str,
     *,
-    tool_ids: tuple[str, ...] = ("ru-writing-style",),
+    tool_ids: tuple[str, ...] | None = None,
 ) -> SessionToolsBuild:
     if not base_version:
         raise ValueError("session tools base version is required")
+    if tool_ids is None:
+        tool_ids = tuple(
+            sorted(
+                path.name
+                for path in (repo_root / "skills").iterdir()
+                if path.is_dir() and not path.is_symlink()
+            )
+        )
     if not tool_ids or tuple(sorted(tool_ids)) != tool_ids:
         raise ValueError("session tool ids must be a non-empty sorted tuple")
     entries: dict[str, bytes] = {}
