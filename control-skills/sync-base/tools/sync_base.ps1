@@ -218,6 +218,55 @@ function Get-LlmInstalledReleaseVersion {
     return $version
 }
 
+function Repair-LlmLegacyCodexAgentsConfig {
+    $configPath = Join-Path ([IO.Path]::GetFullPath($TargetHome)) `
+        '.codex\config.toml'
+    if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+        return
+    }
+
+    $utf8 = New-Object Text.UTF8Encoding($false, $true)
+    $text = $utf8.GetString([IO.File]::ReadAllBytes($configPath))
+    $newline = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
+    $lines = [Text.RegularExpressions.Regex]::Split($text, '\r?\n')
+    $inAgents = $false
+    $changed = $false
+    $kept = New-Object Collections.Generic.List[string]
+    foreach ($line in $lines) {
+        if ($line -match '^\s*\[([^]]+)\]\s*(?:#.*)?$') {
+            $inAgents = $Matches[1] -ceq 'agents'
+        }
+        if ($inAgents -and $line -match (
+            '^\s*(?:enabled|max_threads|max_depth)\s*=\s*' +
+            '(?:true|false|[0-9]+)\s*(?:#.*)?$'
+        )) {
+            $changed = $true
+            continue
+        }
+        $kept.Add($line)
+    }
+    if (-not $changed) {
+        return
+    }
+
+    $updated = $kept -join $newline
+    $temporaryPath = $configPath + '.sync-base-' + `
+        [Guid]::NewGuid().ToString('N') + '.tmp'
+    $backupPath = $configPath + '.sync-base-' + `
+        [Guid]::NewGuid().ToString('N') + '.bak'
+    try {
+        [IO.File]::WriteAllText($temporaryPath, $updated, $utf8)
+        [IO.File]::Replace($temporaryPath, $configPath, $backupPath)
+        Remove-Item -LiteralPath $backupPath -Force
+    }
+    finally {
+        if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
+            Remove-Item -LiteralPath $temporaryPath -Force
+        }
+    }
+    Write-Output 'Removed obsolete scalar [agents] settings from config.toml.'
+}
+
 function Read-LlmZipEntryBytes {
     param(
         [Parameter(Mandatory = $true)]$Archive,
@@ -674,6 +723,8 @@ function Invoke-LlmSyncMain {
         throw 'Installed connection runtime is missing.'
     }
     . $connectionPath
+
+    Repair-LlmLegacyCodexAgentsConfig
 
     $tag = Invoke-WithLlmConnection `
         -HomePath $TargetHome `

@@ -587,6 +587,12 @@ def _build_release_from_export(
             "scope": "current-user",
             "set": [],
         },
+        "retired_managed_paths": [
+            ".agents/skills/doc-extract",
+            ".agents/skills/excel-helper",
+            ".agents/skills/revit-family-generator-ru",
+            ".agents/skills/word-helper",
+        ],
         "session_tools_baseline": baseline,
         "files": package_files,
     }
