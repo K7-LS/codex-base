@@ -228,7 +228,7 @@ function Repair-LlmLegacyCodexAgentsConfig {
     $utf8 = New-Object Text.UTF8Encoding($false, $true)
     $text = $utf8.GetString([IO.File]::ReadAllBytes($configPath))
     $newline = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
-    $lines = $text -split "`r?`n", -1
+    $lines = [Text.RegularExpressions.Regex]::Split($text, '\r?\n')
     $inAgents = $false
     $changed = $false
     $kept = New-Object Collections.Generic.List[string]
@@ -252,9 +252,12 @@ function Repair-LlmLegacyCodexAgentsConfig {
     $updated = $kept -join $newline
     $temporaryPath = $configPath + '.sync-base-' + `
         [Guid]::NewGuid().ToString('N') + '.tmp'
+    $backupPath = $configPath + '.sync-base-' + `
+        [Guid]::NewGuid().ToString('N') + '.bak'
     try {
         [IO.File]::WriteAllText($temporaryPath, $updated, $utf8)
-        [IO.File]::Replace($temporaryPath, $configPath, $null)
+        [IO.File]::Replace($temporaryPath, $configPath, $backupPath)
+        Remove-Item -LiteralPath $backupPath -Force
     }
     finally {
         if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
