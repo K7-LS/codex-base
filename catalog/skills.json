@@ -3,10 +3,8 @@
   {"id":"cad-reader","name":"cad-reader","description":"Use when нужно прочитать геометрию, слои или блоки DWG/DXF.","source":"skills/cad-reader/SKILL.md","required_capabilities":["cad.read"]},
   {"id":"chains-pattern","name":"chains-pattern","description":"Use when задаче нужна именованная цепочка навыков и проверок.","source":"skills/chains-pattern/SKILL.md","required_capabilities":["core.files.read"]},
   {"id":"co-verify","name":"co-verify","description":"Use when нужно точно сверить две спецификации оборудования.","source":"skills/co-verify/SKILL.md","required_capabilities":["core.files.read"]},
-  {"id":"doc-extract","name":"doc-extract","description":"Use when нужно извлечь текст или таблицы из PDF и сканов.","source":"skills/doc-extract/SKILL.md","required_capabilities":["pdf.read","pdf.render"]},
   {"id":"doc-finder","name":"doc-finder","description":"Use when нужен сертификат, паспорт или декларация на изделие.","source":"skills/doc-finder/SKILL.md","required_capabilities":["web.search","web.fetch"]},
   {"id":"domain-grilling","name":"domain-grilling","description":"Use when инженерной задаче не хватает критичных вводных.","source":"skills/domain-grilling/SKILL.md","required_capabilities":["core.files.read"]},
-  {"id":"excel-helper","name":"excel-helper","description":"Use when нужно прочитать, изменить или проверить XLSX.","source":"skills/excel-helper/SKILL.md","required_capabilities":["spreadsheet.read","spreadsheet.write"]},
   {"id":"facts-layer","name":"facts-layer","description":"Use when проекту нужен проверяемый единый слой фактов.","source":"skills/facts-layer/SKILL.md","required_capabilities":["core.files.read","core.files.write"]},
   {"id":"graphify","name":"graphify","description":"Use when нужно понять структуру и связи большой базы.","source":"skills/graphify/SKILL.md","required_capabilities":["core.files.read","core.shell.execute"]},
   {"id":"handoff-to-new-chat","name":"handoff-to-new-chat","description":"Use when работу нужно передать в новую чистую задачу Codex.","source":"skills/handoff-to-new-chat/SKILL.md","required_capabilities":["core.files.read","core.files.write"]},
@@ -21,7 +19,6 @@
   {"id":"pnr-vor-helper","name":"pnr-vor-helper","description":"Use when нужно собрать комплект ПНР и ВОР.","source":"skills/pnr-vor-helper/SKILL.md","required_capabilities":["document.word.write","spreadsheet.write"]},
   {"id":"project-memory","name":"project-memory","description":"Use when проекту нужна локальная память решений и статуса.","source":"skills/project-memory/SKILL.md","required_capabilities":["core.files.read","core.files.write"]},
   {"id":"revit-family-generator","name":"revit-family-generator","description":"Use when нужно сгенерировать определение семейства Revit.","source":"skills/revit-family-generator/SKILL.md","required_capabilities":["revit.execute"]},
-  {"id":"revit-family-generator-ru","name":"revit-family-generator-ru","description":"Use when семейство Revit нужно собрать в RU/мм-профиле.","source":"skills/revit-family-generator-ru/SKILL.md","required_capabilities":["revit.execute"]},
   {"id":"revit-testbed","name":"revit-testbed","description":"Use when Revit-инструмент нужно принять на живом стенде.","source":"skills/revit-testbed/SKILL.md","required_capabilities":["revit.inspect","revit.execute"]},
   {"id":"ru-gov-access","name":"ru-gov-access","description":"Use when нужен российский госреестр с гео-ограничениями.","source":"skills/ru-gov-access/SKILL.md","required_capabilities":["web.fetch","web.browser.interact"]},
   {"id":"ru-writing-style","name":"ru-writing-style","description":"Use when пишешь или правишь русский текст для человека — письмо, КП, пояснительную записку, ответ экспертизе, отчёт, ТЗ, статью.","source":"skills/ru-writing-style/SKILL.md","required_capabilities":[]},
@@ -35,6 +32,5 @@
   {"id":"understanding-map","name":"understanding-map","description":"Use when полезна карта понимания задачи, входов и рисков.","source":"skills/understanding-map/SKILL.md","required_capabilities":["core.files.read"]},
   {"id":"upd-parser","name":"upd-parser","description":"Use when УПД или накладную нужно разобрать в структуру.","source":"skills/upd-parser/SKILL.md","required_capabilities":["pdf.read","spreadsheet.write"]},
   {"id":"web-access","name":"web-access","description":"Use when нужно открыть страницу, скачать или проверить источник.","source":"skills/web-access/SKILL.md","required_capabilities":["web.fetch"]},
-  {"id":"word-helper","name":"word-helper","description":"Use when нужно прочитать, изменить или проверить DOCX.","source":"skills/word-helper/SKILL.md","required_capabilities":["document.word.read","document.word.write"]},
   {"id":"yandex-disk-uploader","name":"yandex-disk-uploader","description":"Use when готовый файл нужно загрузить на Яндекс Диск.","source":"skills/yandex-disk-uploader/SKILL.md","required_capabilities":["yandex.upload"]}
 ]
