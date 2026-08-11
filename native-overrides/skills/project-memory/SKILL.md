@@ -1,66 +1,71 @@
 ---
 name: project-memory
-description: Native Codex project memory with explicit bootstrap and reviewed curation.
+description: Use when проекту нужна локальная память решений и статуса.
 ---
 
-# project-memory
+# project-memory — единое ядро проекта
 
-Use this skill when a project needs durable, inspectable context across Codex
-tasks without adding its full history to every startup prompt.
+Используй этот навык для переносимого состояния проекта между сессиями,
+устройствами и моделями. Ядро у проекта одно: имя папки показывает, кто его
+первым развернул, но не ограничивает, какая модель может в нём работать.
 
-## Bootstrap
+## Сначала обнаружение, потом bootstrap
 
-Run:
+Перед созданием файлов проверь в корне проекта валидные `Claude/` и `Codex/`.
+Валидное ядро содержит файл правил (`CLAUDE.md` или `AGENTS.md`), `STATUS.md`
+и `ЖУРНАЛ СЕССИЙ.md`.
+
+- Найдено одно ядро — работай только в нём; вторую папку не создавай.
+- Ядра нет — разрешено развернуть `Codex/`.
+- Найдены оба — следуй единственному канону, на который согласованно указывают
+  корневые `AGENTS.md` и `CLAUDE.md`. Если указатели расходятся, остановись с
+  `CORE_CONFLICT`; не объединяй и не удаляй данные автоматически.
+- Все записи, STATUS, журнал, бэкапы и курирование веди в выбранном ядре.
+
+## Разворот или подключение
 
 ```powershell
 python "$HOME\.agents\skills\project-memory\tools\bootstrap.py" `
-  "Project name" --target "<project-root>" --role "<role>" --domain "<domain>"
+  "Имя проекта" --target "<корень проекта>" --role "<роль>" --domain "<домен>"
 ```
 
-The command creates, without overwriting existing files:
+Команда не перезаписывает существующие файлы. Если ядро Claude уже существует,
+она переиспользует `Claude/` и создаёт только недостающий корневой указатель
+для Codex. Если ядра нет, создаёт русскоязычное `Codex/` и оба корневых
+указателя — `AGENTS.md` и `CLAUDE.md` — чтобы следующая модель увидела то же ядро.
 
-- `<project-root>/AGENTS.md` — compact entrypoint discovered natively by Codex;
-- `<project-root>/Codex/AGENTS.md` — project rules;
-- `<project-root>/Codex/STATUS.md` — current state and next step;
-- `<project-root>/Codex/КОНТЕКСТ.md` — role, acceptance criteria and pitfalls;
-- `<project-root>/Codex/ЖУРНАЛ СЕССИЙ.md` — compact task journal;
-- `<project-root>/Codex/README.md` — navigation.
+`--force <относительный-путь>` применяй только после показа точной цели
+пользователю. Голое имя файла правил неоднозначно; указывай полный относительный
+путь, например `./AGENTS.md` или `Codex/AGENTS.md`.
 
-Use `--force <relative-path>` only after showing the exact target to the user.
-The bare name `AGENTS.md` is intentionally ambiguous; use `./AGENTS.md` or
-`Codex/AGENTS.md`.
+После подключения прочитай файл правил выбранного ядра, верх журнала и STATUS.
+Не устанавливай глобальный project hook.
 
-Codex reads the root `AGENTS.md` through its native project discovery. Follow
-its instruction to read the compact status and journal. Do not install a
-project hook globally.
+## Курирование с review
 
-## Reviewed curation
-
-Run the read-only proposal stage:
+Сначала только сформируй предложения:
 
 ```powershell
 python "$HOME\.agents\skills\project-memory\tools\curate_rot.py" `
-  propose --project "<project-root>"
+  propose --project "<корень проекта>"
 ```
 
-Read `Codex/.curate/<stamp>/REPORT.md`, inspect each proposal, and ask for an
-explicit decision. Apply only accepted IDs:
+Отчёт появится в `<ядро>/.curate/<stamp>/REPORT.md`. Покажи предложения
+пользователю и применяй только явно принятые ID:
 
 ```powershell
 python "$HOME\.agents\skills\project-memory\tools\curate_rot.py" `
-  apply <stamp> --accept p1,c2 --project "<project-root>"
+  apply <stamp> --accept p1,c2 --project "<корень проекта>"
 ```
 
-The apply stage creates `Codex/_backup_<date>/` first. Never auto-apply, invent
-missing facts, or write outside the project memory surface.
+Перед записью создаётся `<ядро>/_backup_<дата>/`. Не применяй предложения
+автоматически, не выдумывай факты и не записывай вне выбранного ядра.
 
-## Boundaries
+## Границы
 
-- All stored paths are relative to the project root.
-- Personal instructions belong in the project `AGENTS.md`, not a hidden global
-  user layer.
-- The skill performs no network calls, feedback upload, telemetry, or automatic
-  session-report transmission.
-- Keep each journal entry compact: date, device, result, touched files, next
-  step.
-- Use `facts-layer` for factual values and link to it from `STATUS.md`.
+- Пути в памяти — только относительные от корня проекта.
+- Новая запись журнала идёт сверху и остаётся компактной: дата, устройство,
+  результат, затронутые файлы, следующий шаг.
+- Навык не обращается к сети и не отправляет feedback, телеметрию, credentials
+  или session-report.
+- Числа и проверяемые факты храни через `facts-layer`, а из STATUS только ссылайся.

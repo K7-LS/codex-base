@@ -1,38 +1,25 @@
-# project-memory for Codex
+# project-memory — единое ядро Claude/Codex
 
-This is the native Codex project-memory layout. It deliberately uses the
-supported `AGENTS.md` discovery surface and does not install hidden imports,
-global project hooks, telemetry, or reverse sync.
-
-```text
-<project>/
-├── AGENTS.md
-└── Codex/
-    ├── AGENTS.md
-    ├── README.md
-    ├── STATUS.md
-    ├── КОНТЕКСТ.md
-    └── ЖУРНАЛ СЕССИЙ.md
-```
-
-Bootstrap:
+Навык хранит переносимую память проекта в одном каталоге. Существующее валидное
+`Claude/` или `Codex/` всегда переиспользуется; параллельное второе ядро не
+создаётся. При первом развороте из Codex используется `Codex/`, а в корне
+создаются оба указателя: `AGENTS.md` и `CLAUDE.md`.
 
 ```powershell
 python "$HOME\.agents\skills\project-memory\tools\bootstrap.py" `
-  "Project name" --target "<project-root>"
+  "Имя проекта" --target "<корень проекта>"
 ```
 
-The command is idempotent. Existing files are preserved unless an exact
-relative path is supplied through `--force`.
+Повторный запуск ничего не затирает. Если обнаружены два несогласованных ядра,
+команда возвращает `CORE_CONFLICT` до записи файлов.
 
-Curation is a two-stage, review-required native custom agent plan:
+Курирование также автоматически использует выбранное ядро:
 
 ```powershell
 python "$HOME\.agents\skills\project-memory\tools\curate_rot.py" `
-  propose --project "<project-root>"
+  propose --project "<корень проекта>"
 python "$HOME\.agents\skills\project-memory\tools\curate_rot.py" `
-  apply <stamp> --accept p1 --project "<project-root>"
+  apply <stamp> --accept p1 --project "<корень проекта>"
 ```
 
-No lifecycle hook is enabled by this skill. The only global SessionStart hook
-in the Codex base is the silent once-per-day release check.
+Глобальные project hooks этот навык не устанавливает.

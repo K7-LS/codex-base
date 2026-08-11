@@ -198,7 +198,7 @@ def test_entire_installable_payload_has_no_legacy_runtime_contract(repo_root):
             text = path.read_text(encoding="utf-8")
             for pattern in forbidden:
                 assert not re.search(pattern, text), f"{pattern} leaked into {path}"
-            if "llm-interop" not in path.parts:
+            if "llm-interop" not in path.parts and "project-memory" not in path.parts:
                 assert not re.search(
                     r"\bClaude\b", text, re.IGNORECASE
                 ), f"provider term leaked outside interop content: {path}"
@@ -265,6 +265,28 @@ def test_project_memory_bootstrap_is_native_idempotent_and_hook_free(
     project_memory = repo_root / "skills" / "project-memory"
     assert not (project_memory / "tools" / "hooks").exists()
     assert not (project_memory / "tools" / "gen_project_agents.py").exists()
+
+
+def test_project_memory_reuses_existing_claude_core(repo_root, tmp_path):
+    core = tmp_path / "Claude"
+    core.mkdir()
+    for name in ("CLAUDE.md", "STATUS.md", "ЖУРНАЛ СЕССИЙ.md"):
+        (core / name).write_text(f"# {name}\n", encoding="utf-8")
+
+    script = repo_root / "skills" / "project-memory" / "tools" / "bootstrap.py"
+    result = subprocess.run(
+        [sys.executable, str(script), "Общее ядро", "--target", str(tmp_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Claude/ (переиспользовано)" in result.stdout
+    assert not (tmp_path / "Codex").exists()
+    assert "`Claude/`" in (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+
 
 
 def test_skill_local_file_references_are_closed(repo_root):
