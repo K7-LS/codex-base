@@ -22,9 +22,8 @@ from .session_tools import (
 
 
 SUPPORTED_CODEX_CLIENT = "0.146.0-alpha.3.1"
-SOURCE_REPOSITORY = "https://github.com/daniileliseev1337/claude-base"
 TARGET_REPOSITORY = "https://github.com/daniileliseev1337/codex-base"
-TRANSFORMATION_ID = "codex-native-v1"
+TRANSFORMATION_ID = "codex-native-independent-v2"
 FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
 
@@ -64,6 +63,70 @@ def _json_bytes(value: object) -> bytes:
         )
         + "\n"
     ).encode("utf-8")
+
+
+def _build_desired_state(source_root: Path) -> dict[str, object]:
+    agents = json.loads(
+        (source_root / "catalog" / "agents.json").read_text(encoding="utf-8")
+    )
+    skills = json.loads(
+        (source_root / "catalog" / "skills.json").read_text(encoding="utf-8")
+    )
+    protected_state = [
+        ".codex/archived_sessions",
+        ".codex/auth.json",
+        ".codex/browser",
+        ".codex/computer-use",
+        ".codex/imports",
+        ".codex/memories",
+        ".codex/sessions",
+        ".codex/state",
+        ".codex/state.sqlite",
+    ]
+    return {
+        "schema_version": 1,
+        "client": "codex",
+        "unknown_policy": "prompt-every-run",
+        "skills": sorted(str(row["id"]) for row in skills),
+        "agents": sorted(str(row["id"]) for row in agents),
+        "hooks": ["SessionStart:startup:check_release"],
+        "managed_files": [
+            ".codex/AGENTS.md",
+            ".codex/config.toml",
+            ".codex/hooks.json",
+        ],
+        "inventory_roots": [".agents/skills", ".codex/agents"],
+        "mcp": ["k7-autocad-bridge", "k7-revit-bridge"],
+        "plugins": [
+            "documents@openai-primary-runtime",
+            "pdf@openai-primary-runtime",
+            "presentations@openai-primary-runtime",
+            "spreadsheets@openai-primary-runtime",
+            "template-creator@openai-primary-runtime",
+        ],
+        "marketplaces": [],
+        "shared_tools": {
+            "officecli": "1.0.143",
+            "officecli_pdf_exporter": "1.0.0",
+        },
+        "platform_owned": [{"kind": "mcp", "id": "node_repl"}],
+        "protected_state": protected_state,
+        "retired_ids": [
+            "Revit-Connector",
+            "autocad-mcp",
+            "claude-plugins-official",
+        ],
+        "migrations": [
+            {
+                "from": "Revit-Connector",
+                "to": "k7-revit-bridge",
+            },
+            {
+                "from": "autocad-mcp",
+                "to": "k7-autocad-bridge",
+            },
+        ],
+    }
 
 
 def _tree_files(root: Path) -> list[Path]:
@@ -107,7 +170,6 @@ def git_source_identity(repo_root: Path) -> dict[str, str]:
 def assert_clean_git_source(repo_root: Path) -> dict[str, str]:
     source_roots = (
         repo_root / "AGENTS.md",
-        repo_root / "MIGRATION-SOURCE.json",
         repo_root / "agents",
         repo_root / "catalog",
         repo_root / "cold",
@@ -252,18 +314,9 @@ def build_component_lock(
     version: str,
     rendered_source: dict[str, str] | None = None,
 ) -> dict[str, object]:
-    migration = json.loads(
-        (repo_root / "MIGRATION-SOURCE.json").read_text(encoding="utf-8")
-    )
-    upstream = {
-        "repository": str(migration["source"]["repository"]),
-        "commit": str(migration["source"]["commit"]),
-        "tree": str(migration["source"]["tree"]),
-    }
     rendered = rendered_source or git_source_identity(repo_root)
     source = {
-        "upstream_migration": upstream,
-        "rendered_target": rendered,
+        "native_repository": rendered,
     }
     agents_catalog = json.loads(
         (repo_root / "catalog" / "agents.json").read_text(encoding="utf-8")
@@ -469,6 +522,9 @@ def _build_release_from_export(
         ).read_bytes(),
         ".codex/base/VERSION": (version + "\n").encode("utf-8"),
         ".codex/base/components.lock.json": component_lock_bytes,
+        ".codex/base/desired-state.json": _json_bytes(
+            _build_desired_state(source_root)
+        ),
     }
     _add_tree(entries, source_root / "agents", ".codex/agents")
     session_tool_ids = frozenset(
@@ -560,6 +616,7 @@ def _build_release_from_export(
                     ".codex/AGENTS.md",
                     ".codex/base/VERSION",
                     ".codex/base/components.lock.json",
+                    ".codex/base/desired-state.json",
                     ".codex/hooks.json",
                 ]
             ),
@@ -587,6 +644,34 @@ def _build_release_from_export(
             "scope": "current-user",
             "set": [],
         },
+        "desired_state": {
+            "schema_version": 1,
+            "unknown_policy": "prompt-every-run",
+            "local_exceptions": True,
+            "strict_doctor": True,
+            "inventory_roots": [".agents/skills", ".codex/agents"],
+            "platform_owned": [],
+            "toml_reconcile": [
+                {
+                    "path": ".codex/config.toml",
+                    "exact_tables": [
+                        "mcp_servers",
+                        "plugin_marketplaces",
+                        "plugins",
+                    ],
+                    "protected_tables": ["mcp_servers.node_repl"],
+                    "allowed_entries": [
+                        "mcp_servers.k7-autocad-bridge",
+                        "mcp_servers.k7-revit-bridge",
+                        "plugins.documents",
+                        "plugins.pdf",
+                        "plugins.presentations",
+                        "plugins.spreadsheets",
+                        "plugins.template-creator",
+                    ],
+                }
+            ],
+        },
         "session_tools_baseline": baseline,
         "files": package_files,
     }
@@ -602,6 +687,7 @@ def _build_release_from_export(
         "version": version,
         "tag": f"codex-v{version}",
         "channel": "candidate",
+        "supported_codex_client": SUPPORTED_CODEX_CLIENT,
         "client": {
             "id": "codex-cli",
             "supported_version": SUPPORTED_CODEX_CLIENT,

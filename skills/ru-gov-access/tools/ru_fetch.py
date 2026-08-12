@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ru_fetch.py — fetch Russian gov sites/registries from ANY Codex environment,
+ru_fetch.py — fetch Russian gov sites/registries from any supported LLM environment,
 including machines with a foreign egress (system VPN like WARP/Dubai, or forced through
 a foreign corp proxy). The block on RU gov sites is GEO-only (verified 2026-06: a RU exit
 returns 200, no antibot on pages), so a Russian exit-IP is enough for pages and direct PDFs.

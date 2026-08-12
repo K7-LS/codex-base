@@ -6,9 +6,9 @@ absolute-path, done-file-changed) — все action=flag. Твоя задача 
 СМЫСЛА поверх них.
 
 ## Входы (read-only)
-1. `Codex/STATUS.md` — проверяемые утверждения.
-2. `Codex/ЖУРНАЛ СЕССИЙ.md` — что реально происходило (верхние записи новее).
-3. `Codex/.curate/<stamp>/proposals.json` — сигналы скрипта (не дублируй их).
+1. `LLM/STATUS.md` — проверяемые утверждения.
+2. `LLM/ЖУРНАЛ СЕССИЙ.md` — что реально происходило (верхние записи новее).
+3. `LLM/.curate/<stamp>/proposals.json` — сигналы скрипта (не дублируй их).
 
 ## Что искать (для каждого утверждения STATUS: «ещё правда?»)
 - Утверждение противоречит записи журнала (журнал новее → он прав).
@@ -21,13 +21,13 @@ absolute-path, done-file-changed) — все action=flag. Твоя задача 
 ```json
 {
   "id": "c1",
-  "target": "Codex/STATUS.md",
+  "target": "LLM/STATUS.md",
   "current_excerpt": "<строка/блок ДОСЛОВНО как в файле>",
   "proposed_excerpt": "<замена; для archive/flag — пустая строка>",
   "evidence": ["журнал 2026-07-01: «…дословная цитата…»"],
   "confidence": "high|medium|low",
   "action": "modify|flag|archive",
-  "source": "Codex",
+  "source": "LLM",
   "signal": "semantic"
 }
 ```
@@ -38,6 +38,6 @@ absolute-path, done-file-changed) — все action=flag. Твоя задача 
   Evidence = конкретная запись журнала/файл, не «кажется».
 - current_excerpt копируй ДОСЛОВНО (apply ищет точное вхождение).
 - Консервативно: сомневаешься — action=flag, не modify.
-- Пути — относительные от корня проекта. target — только внутри Codex/.
+- Пути — относительные от корня проекта. target — только внутри LLM/.
 - НИЧЕГО не применять самому: только propose-пункты → review с
   пользователем (request_user_input по пунктам) → `apply --accept`.

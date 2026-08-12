@@ -34,7 +34,7 @@ def test_native_tree_materializes_every_catalog_component(repo_root):
     agent_files = sorted((repo_root / "agents").glob("*.toml"))
     skill_files = sorted((repo_root / "skills").glob("*/SKILL.md"))
     assert len(agent_files) == 16
-    assert len(skill_files) == 38
+    assert len(skill_files) == 39
 
     for item in catalog["agents"]:
         path = repo_root / str(item["source"])
@@ -197,8 +197,12 @@ def test_entire_installable_payload_has_no_legacy_runtime_contract(repo_root):
             assert "__pycache__" not in path.parts
             text = path.read_text(encoding="utf-8")
             for pattern in forbidden:
+                if "project-memory" in path.parts and pattern in {
+                    r"\bCLAUDE\.md\b",
+                }:
+                    continue
                 assert not re.search(pattern, text), f"{pattern} leaked into {path}"
-            if "llm-interop" not in path.parts:
+            if not {"llm-interop", "project-memory"}.intersection(path.parts):
                 assert not re.search(
                     r"\bClaude\b", text, re.IGNORECASE
                 ), f"provider term leaked outside interop content: {path}"
@@ -236,18 +240,19 @@ def test_project_memory_bootstrap_is_native_idempotent_and_hook_free(
 
     expected = {
         Path("AGENTS.md"),
-        Path("Codex/AGENTS.md"),
-        Path("Codex/README.md"),
-        Path("Codex/STATUS.md"),
-        Path("Codex/КОНТЕКСТ.md"),
-        Path("Codex/ЖУРНАЛ СЕССИЙ.md"),
+        Path("CLAUDE.md"),
+        Path("LLM/AGENTS.md"),
+        Path("LLM/README.md"),
+        Path("LLM/STATUS.md"),
+        Path("LLM/КОНТЕКСТ.md"),
+        Path("LLM/ЖУРНАЛ СЕССИЙ.md"),
     }
     assert expected <= {
         path.relative_to(tmp_path)
         for path in tmp_path.rglob("*")
         if path.is_file()
     }
-    context = (tmp_path / "Codex" / "КОНТЕКСТ.md").read_text(encoding="utf-8")
+    context = (tmp_path / "LLM" / "КОНТЕКСТ.md").read_text(encoding="utf-8")
     assert "designer" in context
 
     root_agents = tmp_path / "AGENTS.md"

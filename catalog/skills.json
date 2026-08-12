@@ -5,6 +5,7 @@
   {"id":"co-verify","name":"co-verify","description":"Use when нужно точно сверить две спецификации оборудования.","source":"skills/co-verify/SKILL.md","required_capabilities":["core.files.read"]},
   {"id":"doc-extract","name":"doc-extract","description":"Use when нужно извлечь текст или таблицы из PDF и сканов.","source":"skills/doc-extract/SKILL.md","required_capabilities":["pdf.read","pdf.render"]},
   {"id":"doc-finder","name":"doc-finder","description":"Use when нужен сертификат, паспорт или декларация на изделие.","source":"skills/doc-finder/SKILL.md","required_capabilities":["web.search","web.fetch"]},
+  {"id":"document-quality-gate","name":"document-quality-gate","description":"Use when checking prepared text or DOCX, XLSX, PPTX or PDF before delivery.","source":"skills/document-quality-gate/SKILL.md","required_capabilities":["core.files.read"]},
   {"id":"domain-grilling","name":"domain-grilling","description":"Use when инженерной задаче не хватает критичных вводных.","source":"skills/domain-grilling/SKILL.md","required_capabilities":["core.files.read"]},
   {"id":"excel-helper","name":"excel-helper","description":"Use when нужно прочитать, изменить или проверить XLSX.","source":"skills/excel-helper/SKILL.md","required_capabilities":["spreadsheet.read","spreadsheet.write"]},
   {"id":"facts-layer","name":"facts-layer","description":"Use when проекту нужен проверяемый единый слой фактов.","source":"skills/facts-layer/SKILL.md","required_capabilities":["core.files.read","core.files.write"]},

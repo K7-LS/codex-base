@@ -1,13 +1,14 @@
-# project-memory for Codex
+# project-memory for K7 LLM clients
 
-This is the native Codex project-memory layout. It deliberately uses the
-supported `AGENTS.md` discovery surface and does not install hidden imports,
+This is the shared project-memory layout. It emits native root entrypoints and
+does not install hidden imports,
 global project hooks, telemetry, or reverse sync.
 
 ```text
 <project>/
 ├── AGENTS.md
-└── Codex/
+├── CLAUDE.md
+└── LLM/
     ├── AGENTS.md
     ├── README.md
     ├── STATUS.md
@@ -18,7 +19,7 @@ global project hooks, telemetry, or reverse sync.
 Bootstrap:
 
 ```powershell
-python "$HOME\.agents\skills\project-memory\tools\bootstrap.py" `
+python <skill-root>/tools/bootstrap.py `
   "Project name" --target "<project-root>"
 ```
 
@@ -28,11 +29,10 @@ relative path is supplied through `--force`.
 Curation is a two-stage, review-required native custom agent plan:
 
 ```powershell
-python "$HOME\.agents\skills\project-memory\tools\curate_rot.py" `
+python <skill-root>/tools/curate_rot.py `
   propose --project "<project-root>"
-python "$HOME\.agents\skills\project-memory\tools\curate_rot.py" `
+python <skill-root>/tools/curate_rot.py `
   apply <stamp> --accept p1 --project "<project-root>"
 ```
 
-No lifecycle hook is enabled by this skill. The only global SessionStart hook
-in the Codex base is the silent once-per-day release check.
+No lifecycle hook is enabled by this skill.
