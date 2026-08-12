@@ -21,9 +21,9 @@ The tool must:
 1. select the latest stable, non-prerelease `codex-vX.Y.Z` release;
 2. download the package and its release manifest;
 3. validate target, version and the package SHA-256 from the manifest;
-4. invoke the packaged Foundation engine for `plan`, `install`, and `doctor`;
-5. invoke Foundation `rollback` if install succeeds but doctor fails;
-6. use the saved Direct, VPN, HTTP, HTTPS, or SOCKS5 connection profile
+4. invoke the packaged Foundation engine once for `install`; that command
+   validates the package and creates the backup;
+5. use the saved Direct, VPN, HTTP, HTTPS, or SOCKS5 connection profile
    without writing credentials to logs or command history.
 
 Do not install `gh`, log in, change authentication, use a prerelease, or downgrade.

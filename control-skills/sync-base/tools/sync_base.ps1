@@ -653,37 +653,15 @@ function Invoke-LlmVerifiedWorkflow {
         [Parameter(Mandatory = $true)][string]$ClientVersion
     )
 
-    $installed = $false
-    foreach ($command in @('plan', 'install', 'doctor')) {
-        $result = Invoke-LlmFoundationCommand `
-            -Verified $Verified `
-            -Command $command `
-            -ClientVersion $ClientVersion
-        if ([int]$result.exit_code -ne 0) {
-            if ($installed) {
-                $rollback = Invoke-LlmFoundationCommand `
-                    -Verified $Verified `
-                    -Command 'rollback' `
-                    -ClientVersion $ClientVersion
-                if ([int]$rollback.exit_code -ne 0) {
-                    throw (
-                        "Foundation $command failed and rollback failed."
-                    )
-                }
-            }
-            throw (
-                "Foundation $command failed: " +
-                [string]$result.output
-            )
-        }
-        if ($command -ceq 'install') {
-            $installed = $true
-        }
-        if (-not [string]::IsNullOrWhiteSpace(
-            [string]$result.output
-        )) {
-            Write-Output $result.output
-        }
+    $result = Invoke-LlmFoundationCommand `
+        -Verified $Verified `
+        -Command 'install' `
+        -ClientVersion $ClientVersion
+    if ([int]$result.exit_code -ne 0) {
+        throw ('Foundation install failed: ' + [string]$result.output)
+    }
+    if (-not [string]::IsNullOrWhiteSpace([string]$result.output)) {
+        Write-Output $result.output
     }
 }
 
