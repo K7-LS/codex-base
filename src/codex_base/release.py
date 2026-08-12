@@ -430,6 +430,7 @@ def _validate_foundation(
     if manifest.get("network") != "offline":
         raise ValueError("Foundation engine is not declared offline")
     if manifest.get("commands") != [
+        "apply",
         "doctor",
         "install",
         "inventory",
