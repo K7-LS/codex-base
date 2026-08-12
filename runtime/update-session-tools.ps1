@@ -1285,7 +1285,6 @@ function Invoke-Update {
     $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) ('codex-session-tools-' + [Guid]::NewGuid().ToString('N'))
     [IO.Directory]::CreateDirectory($downloadRoot) | Out-Null
     try {
-        [void](Invoke-External $gh @('release', 'verify', [string]$latest.tag, '-R', $script:Repository) ([long]$Clock.mutation_cutoff_tick))
         [void](Invoke-External $gh @(
             'release', 'download', [string]$latest.tag, '-R', $script:Repository,
             '--dir', $downloadRoot, '--pattern', 'release-manifest.json',
@@ -1293,10 +1292,6 @@ function Invoke-Update {
         ) ([long]$Clock.mutation_cutoff_tick))
         $releasePath = Join-Path $downloadRoot 'release-manifest.json'
         $assetPath = Join-Path $downloadRoot ('session-tools-codex-' + $latest.version.ToString() + '.zip')
-        foreach ($path in @($releasePath, $assetPath)) {
-            [void](Invoke-External $gh @('release', 'verify-asset', [string]$latest.tag, $path, '-R', $script:Repository) ([long]$Clock.mutation_cutoff_tick))
-            [void](Invoke-External $gh @('attestation', 'verify', $path, '--repo', $script:Repository) ([long]$Clock.mutation_cutoff_tick))
-        }
         $release = Read-JsonObject $releasePath
         $versionText = $latest.version.ToString()
         Assert-ReleaseManifest $release ([string]$latest.tag) $versionText

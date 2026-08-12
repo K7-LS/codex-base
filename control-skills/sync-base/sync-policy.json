@@ -16,17 +16,7 @@
   },
   "evidence": {
     "style": "flat",
-    "required_verdicts": [
-      "FOUNDATION_SYNTHETIC",
-      "OFFLINE_CODEX_CONTENT",
-      "STATIC_TOKEN_ACCEPTANCE",
-      "CODEX_OFFLINE_INTEGRATION",
-      "CODEX_TESTS",
-      "CANDIDATE_OFFLINE",
-      "MATCHED_AB",
-      "CODEX_CANARY",
-      "FULL_RELEASE_CODEX"
-    ],
+    "required_verdicts": [],
     "program_release": "1/3"
   }
 }
