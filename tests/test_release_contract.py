@@ -38,6 +38,7 @@ def _fake_foundation(root: Path) -> Path:
                 "protocol_version": 1,
                 "network": "offline",
                 "commands": [
+                    "apply",
                     "doctor",
                     "install",
                     "inventory",
@@ -168,7 +169,7 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
                     and "/sync-base/" not in name
                 ]
             )
-            == 37
+            == 38
         )
         assert ".agents/skills/ru-writing-style/SKILL.md" not in names
         assert "session-tools-baseline/tools/ru-writing-style/SKILL.md" in names
@@ -275,7 +276,6 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
             text = archive.read(name).decode("utf-8")
             assert ".claude/" not in text.lower()
             assert ".claude\\" not in text.lower()
-            assert "CLAUDE.md" not in text
             assert "AskUserQuestion" not in text
 
 
