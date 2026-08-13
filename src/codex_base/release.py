@@ -688,7 +688,6 @@ def _build_release_from_export(
         "version": version,
         "tag": f"codex-v{version}",
         "channel": "candidate",
-        "supported_codex_client": SUPPORTED_CODEX_CLIENT,
         "client": {
             "id": "codex-cli",
             "supported_version": SUPPORTED_CODEX_CLIENT,

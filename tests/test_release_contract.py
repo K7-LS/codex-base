@@ -122,7 +122,10 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
 
     assert _sha256(first.zip_path) == _sha256(second.zip_path)
     assert first.manifest == second.manifest
-    assert first.manifest["supported_codex_client"] == SUPPORTED_CODEX_CLIENT
+    assert first.manifest["client"]["supported_version"] == (
+        SUPPORTED_CODEX_CLIENT
+    )
+    assert "supported_codex_client" not in first.manifest
     assert first.manifest["asset"]["sha256"] == _sha256(first.zip_path)
     assert first.manifest["components_lock_sha256"] == _sha256(
         first.component_lock_path
