@@ -5,7 +5,7 @@
 На каждом новом сеансе загружается только HOT-слой: компактные запреты,
 маршрутизация основных строительных доменов, reviewer/risk gates,
 token-дисциплина, lazy dependency policy и one-way sync. WARM discovery
-показывает названия, короткие описания и пути 16 агентов, 38 capability-skills
+показывает названия, короткие описания и пути 16 агентов, 39 capability-skills
 и одного control-skill `$sync-base`.
 
 Полные методологии, скрипты, шаблоны и references на старте неизвестны и не
@@ -34,7 +34,7 @@ token-дисциплина, lazy dependency policy и one-way sync. WARM discove
 | `snabzhenets` | Разбирает УПД и входящие КП, сравнивает поставщиков и формирует закупочные заявки. | RW | `core.files.read`, `spreadsheet.write` |
 | `word-checker` | Read-only проверка DOCX: структура, стили, таблицы, изображения и незаполненные шаблоны. | RO | `document.word.read` |
 
-## 38 capability-skills
+## 39 capability-skills
 
 | Skill | Когда загружается | Зависимости |
 | --- | --- | --- |
@@ -44,6 +44,7 @@ token-дисциплина, lazy dependency policy и one-way sync. WARM discove
 | `$co-verify` | Use when нужно точно сверить две спецификации оборудования. | `core.files.read` |
 | `$doc-extract` | Use when нужно извлечь текст или таблицы из PDF и сканов. | `pdf.read`, `pdf.render` |
 | `$doc-finder` | Use when нужен сертификат, паспорт или декларация на изделие. | `web.search`, `web.fetch` |
+| `$document-quality-gate` | Use when checking prepared text or DOCX, XLSX, PPTX or PDF before delivery. | `core.files.read` |
 | `$domain-grilling` | Use when инженерной задаче не хватает критичных вводных. | `core.files.read` |
 | `$excel-helper` | Use when нужно прочитать, изменить или проверить XLSX. | `spreadsheet.read`, `spreadsheet.write` |
 | `$facts-layer` | Use when проекту нужен проверяемый единый слой фактов. | `core.files.read`, `core.files.write` |

@@ -496,7 +496,7 @@ function Assert-LlmReleaseFiles {
             [string]$engineManifest.engine_version -cne $foundationVersion -or
             [string]$engineManifest.network -cne 'offline' -or
             (@($engineManifest.commands) -join ',') -cne (
-                'doctor,install,inventory,plan,rollback'
+                'apply,doctor,install,inventory,plan,rollback'
             ) -or
             (@($engineManifest.supported_powershell) -join ',') -cne (
                 '5.1,7'

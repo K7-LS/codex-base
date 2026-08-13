@@ -107,6 +107,7 @@ def _write_release_fixture(
         "engine_version": "0.1.0",
         "network": "offline",
         "commands": [
+            "apply",
             "doctor",
             "install",
             "inventory",
@@ -910,7 +911,10 @@ def test_runtime_has_only_minimal_one_way_hook_and_no_model_defaults(repo_root):
     config = tomllib.loads((repo_root / "runtime" / "config.toml").read_text("utf-8"))
     assert "model" not in config
     assert "model_reasoning_effort" not in config
-    assert "mcp_servers" not in config
+    assert set(config["mcp_servers"]) == {
+        "k7-autocad-bridge",
+        "k7-revit-bridge",
+    }
     assert config["features"]["hooks"] is True
 
     hook = (repo_root / "runtime" / "hooks" / "check_release.ps1").read_text(

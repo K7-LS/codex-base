@@ -56,6 +56,7 @@ def _write_verified_release_fixture(
             "protocol_version": 1,
             "network": "offline",
             "commands": [
+                "apply",
                 "doctor",
                 "install",
                 "inventory",

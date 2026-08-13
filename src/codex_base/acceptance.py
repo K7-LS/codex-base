@@ -177,7 +177,7 @@ def scan_automatic_network_surfaces(repo_root: Path) -> dict[str, object]:
         for kind, pattern in reverse_patterns.items()
         for match in pattern.finditer(payload)
     ]
-    expected_hosts = ["api.github.com"]
+    expected_hosts = ["api.github.com", "github.com"]
     allowed_gh = [
         "release download",
         "release list",

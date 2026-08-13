@@ -410,7 +410,7 @@ def _foundation_from_verified_package(
         or engine_manifest.get("engine_version") != version
         or engine_manifest.get("network") != "offline"
         or engine_manifest.get("commands")
-        != ["doctor", "install", "inventory", "plan", "rollback"]
+        != ["apply", "doctor", "install", "inventory", "plan", "rollback"]
         or engine_manifest.get("supported_powershell") != ["5.1", "7"]
         or engine_manifest.get("foundation_ps1_sha256")
         != hashlib.sha256(payloads["foundation.ps1"]).hexdigest()
