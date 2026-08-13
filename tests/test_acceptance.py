@@ -137,3 +137,12 @@ def test_acceptance_never_promotes_from_missing_foundation_evidence(
     assert evidence["FOUNDATION_SYNTHETIC"] == "NOT_RUN"
     assert evidence["OFFLINE_CODEX_CONTENT"] == "PASS"
     assert evidence["FULL_RELEASE_CODEX"] == "NOT_PASS"
+
+
+def test_acceptance_records_explicit_remove_decision_for_unknown_entries(
+    repo_root,
+):
+    runner = (repo_root / "tools" / "run_acceptance.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'arguments.append("-ConfirmRemoveUnknown")' in runner

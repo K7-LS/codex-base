@@ -84,6 +84,8 @@ def _foundation_command(
     ]
     if package is not None:
         arguments.extend(["-Package", str(package)])
+        if command in {"plan", "install"}:
+            arguments.append("-ConfirmRemoveUnknown")
     else:
         arguments.extend(["-Target", "codex"])
     return _run(arguments, cwd=foundation.parent)
