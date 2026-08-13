@@ -222,7 +222,7 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     temporary.replace(args.receipt)
-    print(json.dumps(receipt, ensure_ascii=False, sort_keys=True))
+    print(json.dumps(receipt, ensure_ascii=True, sort_keys=True))
     return code
 
 
