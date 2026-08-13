@@ -11,7 +11,7 @@ description: Use when проекту нужен проверяемый един�
 держит их в одном месте, каждый агент читает первым, правка — только там.
 
 ## Границы (НЕ помойка)
-| FACTS.md | AGENTS.md | _meta/DECISIONS.md | auto-memory |
+| FACTS.md | project instructions | _meta/DECISIONS.md | auto-memory |
 |---|---|---|---|
 | данные проекта | инструкции «как работать» | решения «почему» | межпроектные уроки |
 
@@ -19,7 +19,7 @@ description: Use when проекту нужен проверяемый един�
 
 ## Где живёт
 `<project-cwd>/FACTS.md`. Если активны structured-artifacts — `<project-cwd>/_meta/FACTS.md`
-(6-й артефакт). НЕ в `~/.codex/base/` (это данные проекта, не методбаза).
+(6-й артефакт). НЕ в глобальной базе LLM-клиента (это данные проекта, не методбаза).
 
 ## Формат
 Шаблон — `references/FACTS.template.md`. Frontmatter (`project`, `last_updated`) +

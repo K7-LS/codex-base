@@ -20,7 +20,7 @@ description: Use when нужен российский госреестр с ге
 
 ## Как пользоваться (детерминированный скрипт, без ключей)
 ```
-python ~/.agents/skills/ru-gov-access/tools/ru_fetch.py <URL> [-o out.html|out.pdf]
+python <skill-root>/tools/ru_fetch.py <URL> [-o out.html|out.pdf]
 # опции: -X POST  -H 'Header: V' (повторяемо)  -d '<тело>'  --timeout 20  --tries 16  --no-cache
 ```
 Источники прокси: proxifly (RU pre-filtered) + hookzof (health-check через ipinfo). Рабочий прокси
@@ -47,10 +47,10 @@ python ~/.agents/skills/ru-gov-access/tools/ru_fetch.py <URL> [-o out.html|out.p
 а API через curl = `403`. Значит дело **НЕ в гео и не в IP, а в браузерной JS-сессии**: SPA делает handshake
 на JavaScript, curl-реплей (даже с cookie+заголовками) его не воспроизводит. Нужен **реальный браузер**:
 - **на ПК в РФ** — локальный браузер уже с RU-IP: открыть реестр в Chrome/Edge (для человека) или гонять
-  через **playwright** (для Codex) — прокси/сервис НЕ нужны, IP уже российский;
+  через **playwright** (для LLM-клиента) — прокси/сервис НЕ нужны, IP уже российский;
 - **с иностранного egress** (VPN/Дубай) — playwright через RU-прокси (живой RU-SOCKS5 из вывода `ru_fetch.py`/`$RU_PROXY`):
   ```
-  Codex mcp add playwright-ru -- npx @playwright/mcp@0.0.76 --proxy-server=socks5://<RU_IP:PORT>
+  <client> mcp add playwright-ru -- npx @playwright/mcp@0.0.76 --proxy-server=socks5://<RU_IP:PORT>
   ```
   рендерит SPA с RU-IP → данные грузятся. Либо антибот-API с browser+`country=RU`: **ScrapingAnt**
   (10k/мес free) / Bright Data.
@@ -75,13 +75,13 @@ python ~/.agents/skills/ru-gov-access/tools/ru_fetch.py <URL> [-o out.html|out.p
 - Бесплатные прокси **эфемерны** (живут часы/дни) — скрипт берёт свежий список КАЖДЫЙ запуск и
   health-check'ает. Если «no live RU proxy» — повторить запуск или задать `$RU_PROXY`.
 - Для СТАБИЛЬНОСТИ и data-слоя — завести надёжный RU-прокси/VPN и положить в окружение:
-  `RU_PROXY=socks5h://user:pass@host:port` (per-machine, в `Codex.user.md`/env, НЕ в git).
+  `RU_PROXY=socks5h://user:pass@host:port` (per-machine, в локальном client config/env, НЕ в git).
 - **Безопасность:** через случайные бесплатные прокси гонять ТОЛЬКО публичное чтение (открытые
   реестры). Никаких логинов/токенов/ПДн — трафик идёт через чужой сервер. Для авторизованных
   запросов — только доверенный `$RU_PROXY`.
 
 ## Раздача через sync-base
-Скилл целиком в `~/.agents/skills/ru-gov-access/` (SKILL.md + tools/ru_fetch.py) —
+Скилл целиком в native skills root клиента (SKILL.md + tools/ru_fetch.py) —
 распространяется штатным sync-base, **без ключей и MCP**. Каждый пользователь при желании
 добавляет свой `$RU_PROXY`. Опционально (для data-слоя) — добавить ScrapingAnt MCP в
 mcp-manifest и личный free-ключ.

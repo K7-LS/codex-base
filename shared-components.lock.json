@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "hash_algorithm": "sha256-tree-v1",
+  "components": [
+    {
+      "id": "document-quality-gate",
+      "sha256": "3c9c5aad9402c5e88b25e9bd4919262e029aae45e1b3615bd8897bb67a77fb5a",
+      "files": 2
+    },
+    {
+      "id": "facts-layer",
+      "sha256": "1db8ac9ecb1d42a272e9b7da1e7b3ab8cc2408161d1dd0774c66b6bb97a2036a",
+      "files": 2
+    },
+    {
+      "id": "project-memory",
+      "sha256": "b7682b1d0e94eda650568b244bfac25d5b0f722b83f091b307ccd38f6008dcb7",
+      "files": 13
+    },
+    {
+      "id": "ru-gov-access",
+      "sha256": "f151720c3cda8602674907e161e1c90ad503d238ce8c663bcc2c1307c6f7926d",
+      "files": 2
+    },
+    {
+      "id": "ru-writing-style",
+      "sha256": "cdf6e761be80aff58f83d1abdeb50fdd34c82ee769b0643e62005e6bebbdb16b",
+      "files": 1
+    }
+  ]
+}

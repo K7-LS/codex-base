@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bootstrap.py — разворот нейтрального ядра памяти проекта в <Проект>/Codex/.
+"""bootstrap.py — разворот нейтрального ядра памяти проекта в <Проект>/LLM/.
 
 Часть скилла project-memory. Идемпотентен: существующие файлы НЕ перезаписывает
 (перезапись — только явный --force). Ссылки в шаблонах — относительные.
@@ -21,12 +21,13 @@ JOURNAL_NAME = "ЖУРНАЛ СЕССИЙ.md"
 
 # (имя шаблона, относительный путь результата от корня проекта)
 CORE_FILES = [
-    ("AGENTS.md.tmpl", Path("Codex") / "AGENTS.md"),
-    ("README.md.tmpl", Path("Codex") / "README.md"),
-    ("ЖУРНАЛ СЕССИЙ.md.tmpl", Path("Codex") / JOURNAL_NAME),
-    ("STATUS.md.tmpl", Path("Codex") / "STATUS.md"),
-    ("КОНТЕКСТ.md.tmpl", Path("Codex") / "КОНТЕКСТ.md"),
+    ("AGENTS.md.tmpl", Path("LLM") / "AGENTS.md"),
+    ("README.md.tmpl", Path("LLM") / "README.md"),
+    ("ЖУРНАЛ СЕССИЙ.md.tmpl", Path("LLM") / JOURNAL_NAME),
+    ("STATUS.md.tmpl", Path("LLM") / "STATUS.md"),
+    ("КОНТЕКСТ.md.tmpl", Path("LLM") / "КОНТЕКСТ.md"),
     ("root-AGENTS.md.tmpl", Path("AGENTS.md")),
+    ("root-CLAUDE.md.tmpl", Path("CLAUDE.md")),
 ]
 
 # Мостик роли к 16 доменным агентам: домен проекта → ведущий агент. Матчинг по ГРАНИЦЕ
@@ -72,9 +73,7 @@ def render(template_path: Path, project: str, today: str, host: str,
 
 
 def _forced(rel_out: Path, force: list[str]) -> bool:
-    """--force матчит осознанный путь со слэшем (Codex/AGENTS.md, ./AGENTS.md)
-    либо голое имя, если оно уникально среди CORE_FILES. Голое AGENTS.md
-    неоднозначно (корневой указатель и Codex/AGENTS.md) — не матчится."""
+    """--force матчит точный осознанный относительный путь."""
     rel_posix = rel_out.as_posix()
     for f in force:
         fp = f.replace("\\", "/")
@@ -124,8 +123,8 @@ def main(argv=None) -> int:
                    help="зарезервировано (v1: только core)")
     p.add_argument("--force", action="append", default=[], metavar="ФАЙЛ",
                    help="перезаписать существующий файл (можно повторять); "
-                        "для AGENTS.md указывать путь: ./AGENTS.md (корневой) "
-                        "или Codex/AGENTS.md")
+                        "для правил указывать точный путь: ./AGENTS.md, "
+                        "./CLAUDE.md или LLM/AGENTS.md")
     p.add_argument("--role", default="", help="роль в КОНТЕКСТ.md (напр. 'инженер ОВ')")
     p.add_argument("--domain", default="",
                    help="домен проекта → ведущий агент (ОВ/ВК/ЭО/СС/ИД/ВОР/смета/снабжение/Revit...)")

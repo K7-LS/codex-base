@@ -11,6 +11,7 @@ import pytest
 
 from codex_base.release import (
     SUPPORTED_CODEX_CLIENT,
+    _build_desired_state,
     assert_clean_git_source,
     build_component_lock,
     build_release,
@@ -37,6 +38,7 @@ def _fake_foundation(root: Path) -> Path:
                 "protocol_version": 1,
                 "network": "offline",
                 "commands": [
+                    "apply",
                     "doctor",
                     "install",
                     "inventory",
@@ -60,7 +62,7 @@ def test_component_lock_covers_all_vendored_runtime_components(repo_root):
     assert lock["target"] == "codex"
     assert lock["version"] == "0.1.0"
     assert len(lock["components"]["agents"]) == 16
-    assert len(lock["components"]["skills"]) == 38
+    assert len(lock["components"]["skills"]) == 39
     assert len(lock["components"]["control_skills"]) == 1
     assert len(lock["components"]["cold"]) == 26
     assert len(lock["components"]["runtime"]) == 1
@@ -69,19 +71,48 @@ def test_component_lock_covers_all_vendored_runtime_components(repo_root):
         for row in lock["components"]["runtime"][0]["files"]
     }
     assert "runtime/connection.ps1" in runtime_paths
-    rendered = lock["provenance"]["rendered_target"]
+    rendered = lock["provenance"]["native_repository"]
     assert rendered["repository"].endswith("/codex-base")
     assert len(rendered["commit"]) == 40
     assert len(rendered["tree"]) == 40
-    assert rendered["transformation"] == "codex-native-v1"
+    assert rendered["transformation"] == "codex-native-independent-v2"
     for group in ("agents", "skills", "cold"):
         for component in lock["components"][group]:
-            assert component["source"]["upstream_migration"][
-                "repository"
-            ].endswith("/claude-base")
-            assert component["source"]["rendered_target"] == rendered
+            assert component["source"]["native_repository"] == rendered
             assert len(component["sha256"]) == 64
             assert component["files"]
+
+
+def test_desired_state_is_codex_native_complete_and_protects_user_state(repo_root):
+    desired = _build_desired_state(repo_root)
+    assert desired["client"] == "codex"
+    assert desired["unknown_policy"] == "prompt-every-run"
+    assert desired["inventory_roots"] == [
+        ".agents/skills",
+        ".codex/agents",
+    ]
+    assert desired["platform_owned"] == [
+        {"kind": "mcp", "id": "node_repl"},
+    ]
+    assert set(desired["mcp"]) == {
+        "k7-autocad-bridge",
+        "k7-revit-bridge",
+    }
+    assert set(desired["plugins"]) == {
+        "documents@openai-primary-runtime",
+        "pdf@openai-primary-runtime",
+        "presentations@openai-primary-runtime",
+        "spreadsheets@openai-primary-runtime",
+        "template-creator@openai-primary-runtime",
+    }
+    assert desired["marketplaces"] == []
+    assert all("claude" not in plugin.lower() for plugin in desired["plugins"])
+    assert set(desired["protected_state"]) >= {
+        ".codex/auth.json",
+        ".codex/memories",
+        ".codex/sessions",
+        ".codex/state.sqlite",
+    }
 
 
 def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_path):
@@ -138,7 +169,7 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
                     and "/sync-base/" not in name
                 ]
             )
-            == 37
+            == 38
         )
         assert ".agents/skills/ru-writing-style/SKILL.md" not in names
         assert "session-tools-baseline/tools/ru-writing-style/SKILL.md" in names
@@ -184,10 +215,15 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
             for name in names
             if name.startswith((".agents/skills/", ".codex/agents/"))
         }
-        assert set(managed_surface["replace_files"]) == individually_managed | {
+        individually_replaced = {
+            name for name in individually_managed
+            if not name.startswith(".agents/skills/")
+        }
+        assert set(managed_surface["replace_files"]) == individually_replaced | {
             ".codex/AGENTS.md",
             ".codex/base/VERSION",
             ".codex/base/components.lock.json",
+            ".codex/base/desired-state.json",
             ".codex/hooks.json",
         }
         assert managed_surface["replace_files"] == sorted(
@@ -240,7 +276,6 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
             text = archive.read(name).decode("utf-8")
             assert ".claude/" not in text.lower()
             assert ".claude\\" not in text.lower()
-            assert "CLAUDE.md" not in text
             assert "AskUserQuestion" not in text
 
 
@@ -325,15 +360,8 @@ def test_clean_release_gate_rejects_reparse_point_in_managed_source(
         assert_clean_git_source(clone)
 
 
-def test_migration_source_is_pinned_and_complete(repo_root):
-    source = json.loads(
-        (repo_root / "MIGRATION-SOURCE.json").read_text(encoding="utf-8")
-    )
-    assert source["source"]["repository"] == (
-        "https://github.com/daniileliseev1337/claude-base"
-    )
-    assert source["source"]["commit"] == "d263065d902000a032c87bd31175889168f616bc"
-    assert source["source"]["tree"] == "7e3fda8ff712e22bb1d5a2bb533bd7a6998cc474"
-    assert len(source["inventory"]["agents"]) == 16
-    assert len(source["inventory"]["skills"]) == 38
-    assert len(source["inventory"]["cold"]) == 26
+def test_component_provenance_is_native_not_generated_from_another_base(repo_root):
+    lock = build_component_lock(repo_root, "0.1.0")
+    source = lock["provenance"]["native_repository"]
+    assert source["repository"] == "https://github.com/daniileliseev1337/codex-base"
+    assert source["transformation"] == "codex-native-independent-v2"

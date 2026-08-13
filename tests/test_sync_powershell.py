@@ -56,6 +56,7 @@ def _write_verified_release_fixture(
             "protocol_version": 1,
             "network": "offline",
             "commands": [
+                "apply",
                 "doctor",
                 "install",
                 "inventory",
@@ -485,7 +486,7 @@ def test_sync_powershell_rolls_back_after_post_install_doctor_failure(
         (
             "$script:Calls = [Collections.Generic.List[string]]::new(); "
             "function Invoke-LlmFoundationCommand { "
-            "param($Verified, [string]$Command, [string]$ClientVersion); "
+            "param($Verified, [string]$Command, [string]$ClientVersion, [string]$PlanFile); "
             "$script:Calls.Add($Command); "
             "if ($Command -ceq 'doctor') { "
             "return [pscustomobject]@{ exit_code = 30; output = 'drift' } "
@@ -504,8 +505,8 @@ def test_sync_powershell_rolls_back_after_post_install_doctor_failure(
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.splitlines() == [
-        "ERROR:Foundation doctor failed.",
-        "plan,install,doctor,rollback",
+        "ERROR:Foundation doctor failed: drift",
+        "inventory,plan,apply,doctor,rollback",
     ]
 
 

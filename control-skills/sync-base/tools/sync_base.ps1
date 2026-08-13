@@ -496,7 +496,7 @@ function Assert-LlmReleaseFiles {
             [string]$engineManifest.engine_version -cne $foundationVersion -or
             [string]$engineManifest.network -cne 'offline' -or
             (@($engineManifest.commands) -join ',') -cne (
-                'doctor,install,inventory,plan,rollback'
+                'apply,doctor,install,inventory,plan,rollback'
             ) -or
             (@($engineManifest.supported_powershell) -join ',') -cne (
                 '5.1,7'
@@ -568,7 +568,8 @@ function Invoke-LlmFoundationCommand {
     param(
         [Parameter(Mandatory = $true)]$Verified,
         [Parameter(Mandatory = $true)][string]$Command,
-        [Parameter(Mandatory = $true)][string]$ClientVersion
+        [Parameter(Mandatory = $true)][string]$ClientVersion,
+        [string]$PlanFile
     )
 
     $powershell = Get-Command powershell.exe -ErrorAction SilentlyContinue
@@ -591,7 +592,9 @@ function Invoke-LlmFoundationCommand {
     if ($Command -in @('plan', 'install')) {
         $arguments += @('-Package', [string]$Verified.asset_path)
     }
-    if ($Command -in @('plan', 'install', 'doctor')) {
+    if ($Command -ceq 'plan') { $arguments += '-Interactive' }
+    if ($Command -ceq 'apply') { $arguments += @('-PlanFile', $PlanFile) }
+    if ($Command -in @('plan', 'apply', 'install', 'doctor')) {
         $arguments += @(
             '-ClientId',
             [string]$Verified.client_id,
@@ -613,11 +616,30 @@ function Invoke-LlmVerifiedWorkflow {
     )
 
     $installed = $false
-    foreach ($command in @('plan', 'install', 'doctor')) {
+    $inventory = Invoke-LlmFoundationCommand -Verified $Verified `
+        -Command 'inventory' -ClientVersion $ClientVersion
+    if ([int]$inventory.exit_code -ne 0) {
+        throw ("Foundation inventory failed: " + [string]$inventory.output)
+    }
+    if (-not [string]::IsNullOrWhiteSpace([string]$inventory.output)) {
+        Write-Output $inventory.output
+    }
+    $plan = Invoke-LlmFoundationCommand -Verified $Verified `
+        -Command 'plan' -ClientVersion $ClientVersion
+    if ([int]$plan.exit_code -ne 0) {
+        throw ("Foundation interactive plan failed: " + [string]$plan.output)
+    }
+    $planFile = Join-Path ([IO.Path]::GetTempPath()) (
+        'k7-sync-plan-' + [Guid]::NewGuid().ToString('N') + '.json'
+    )
+    [IO.File]::WriteAllText($planFile, [string]$plan.output, (New-Object Text.UTF8Encoding($false)))
+    try {
+    foreach ($command in @('apply', 'doctor')) {
         $result = Invoke-LlmFoundationCommand `
             -Verified $Verified `
             -Command $command `
-            -ClientVersion $ClientVersion
+            -ClientVersion $ClientVersion `
+            -PlanFile $planFile
         if ([int]$result.exit_code -ne 0) {
             if ($installed) {
                 $rollback = Invoke-LlmFoundationCommand `
@@ -635,7 +657,7 @@ function Invoke-LlmVerifiedWorkflow {
                 [string]$result.output
             )
         }
-        if ($command -ceq 'install') {
+        if ($command -ceq 'apply') {
             $installed = $true
         }
         if (-not [string]::IsNullOrWhiteSpace(
@@ -644,6 +666,12 @@ function Invoke-LlmVerifiedWorkflow {
             Write-Output $result.output
         }
     }
+    } finally {
+        if (Test-Path -LiteralPath $planFile -PathType Leaf) {
+            Remove-Item -LiteralPath $planFile -Force
+        }
+    }
+    Write-Output '{"status":"RESTART_REQUIRED","next":"restart client, then doctor --strict"}'
 }
 
 function Invoke-LlmSyncMain {

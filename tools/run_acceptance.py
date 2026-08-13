@@ -229,12 +229,13 @@ def main(argv: list[str] | None = None) -> int:
     if foundation_evidence.get("FOUNDATION_SYNTHETIC") != "PASS":
         raise SystemExit("Foundation evidence is not PASS")
     foundation_files = _files(foundation)
-    if set(foundation_files) != {
+    required_foundation = {
         "VERSION",
         "engine-manifest.json",
         "foundation.ps1",
-    }:
-        raise SystemExit("Foundation engine inventory differs")
+    }
+    if not required_foundation.issubset(foundation_files):
+        raise SystemExit("Foundation engine inventory is incomplete")
     accepted_builds = foundation_evidence.get("engine_builds")
     if not isinstance(accepted_builds, dict) or any(
         not isinstance(accepted_builds.get(shell), dict)

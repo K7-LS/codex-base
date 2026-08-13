@@ -187,7 +187,6 @@ def _write_release_fixture(root: Path, payload: bytes) -> dict[str, object]:
             "id": "codex-cli",
             "supported_version": "0.146.0-alpha.3.1",
         },
-        "supported_codex_client": "0.146.0-alpha.3.1",
         "foundation_engine_version": "0.3.0",
         "foundation_engine_manifest_sha256": "1" * 64,
         "source": {

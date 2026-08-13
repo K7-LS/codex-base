@@ -115,7 +115,7 @@ def _copy_legacy_surface(source_profile: Path, destination: Path) -> None:
         shutil.copy2(skill, destination_directory / "SKILL.md")
     if len(list((destination / ".codex" / "agents").glob("*.toml"))) != 16:
         raise RuntimeError("legacy snapshot does not contain 16 agents")
-    if len(list((destination / ".agents" / "skills").glob("*/SKILL.md"))) != 45:
+    if len(list((destination / ".agents" / "skills").glob("*/SKILL.md"))) != 46:
         raise RuntimeError("legacy snapshot does not contain 45 skills")
 
 
@@ -160,7 +160,7 @@ def _foundation_install(
         )
     agents = list((home / ".codex" / "agents").glob("*.toml"))
     skills = list((home / ".agents" / "skills").glob("*/SKILL.md"))
-    if len(agents) != 16 or len(skills) != 38:
+    if len(agents) != 16 or len(skills) != 39:
         raise RuntimeError(
             "candidate discovery differs after install: "
             f"agents={len(agents)}, skills={len(skills)}"

@@ -177,7 +177,7 @@ def scan_automatic_network_surfaces(repo_root: Path) -> dict[str, object]:
         for kind, pattern in reverse_patterns.items()
         for match in pattern.finditer(payload)
     ]
-    expected_hosts = ["api.github.com"]
+    expected_hosts = ["api.github.com", "github.com"]
     allowed_gh = [
         "release download",
         "release list",
@@ -288,7 +288,7 @@ def write_acceptance_evidence(
         counts
         == {
             "agents": 16,
-            "capability_skills": 38,
+            "capability_skills": 39,
             "control_skills": 1,
             "cold": 26,
         }

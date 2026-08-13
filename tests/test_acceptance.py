@@ -74,7 +74,7 @@ def test_automatic_network_is_one_way_and_github_read_only(repo_root):
     result = scan_automatic_network_surfaces(repo_root)
 
     assert result["status"] == "PASS"
-    assert result["automatic_hosts"] == ["api.github.com"]
+    assert result["automatic_hosts"] == ["api.github.com", "github.com"]
     assert result["reverse_flow_findings"] == []
     assert result["permitted_gh_operations"] == [
         "release download",
