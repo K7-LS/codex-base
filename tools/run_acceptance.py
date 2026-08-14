@@ -88,7 +88,9 @@ def _foundation_command(
             arguments.append("-ConfirmRemoveUnknown")
     else:
         arguments.extend(["-Target", "codex"])
-    return _run(arguments, cwd=foundation.parent)
+    environment = os.environ.copy()
+    environment["FOUNDATION_ACCEPTANCE_MODE"] = "1"
+    return _run(arguments, cwd=foundation.parent, env=environment)
 
 
 def _seed(home: Path) -> dict[str, str]:
