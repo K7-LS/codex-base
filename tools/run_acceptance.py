@@ -158,7 +158,7 @@ def _integration_case(
         raise AssertionError("Codex install created a Claude runtime path")
     agent_files = sorted((home / ".codex" / "agents").glob("*.toml"))
     skill_files = sorted((home / ".agents" / "skills").glob("*/SKILL.md"))
-    if len(agent_files) != 17 or len(skill_files) != 39:
+    if len(agent_files) != 16 or len(skill_files) != 40:
         raise AssertionError(
             f"installed discovery differs: agents={len(agent_files)} "
             f"skills={len(skill_files)}"
@@ -208,11 +208,13 @@ def _integration_case(
         "status": "PASS",
         "executable": executable,
         "agents": 16,
-        "capability_skills": 37,
+        "base_skills": 39,
+        "session_tools": 1,
+        "capability_skills": 39,
         "control_skills": 1,
         "preserved_sentinels": len(sentinels),
         "unknown_discovery_preserved": True,
-        "total_discovery": {"agents": 17, "skills": 39},
+        "total_discovery": {"agents": 16, "skills": 40},
         "rollback_restored_previous_surface": True,
     }
 
@@ -307,7 +309,10 @@ def main(argv: list[str] | None = None) -> int:
         "candidate_zip_sha256": _sha256(first.zip_path),
         "cases": cases,
         "errors": errors,
-        "scope": "real 16-agent/37-capability-skill candidate in isolated fake homes",
+        "scope": (
+            "real 16-agent/39-base-skill plus 1 session-tool candidate "
+            "in isolated fake homes"
+        ),
     }
 
     if dist.exists():
