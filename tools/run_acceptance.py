@@ -174,7 +174,11 @@ def _integration_case(
     if inventory.returncode != 0:
         raise AssertionError(inventory.stdout or inventory.stderr)
     inventory_data = json.loads(inventory.stdout)
-    if inventory_data.get("quarantined_unknown") != []:
+    expected_quarantine = [
+        ".agents/skills/local-personal",
+        ".codex/agents/legacy.toml",
+    ]
+    if inventory_data.get("quarantined_unknown") != expected_quarantine:
         raise AssertionError("unknown discovery inventory differs")
 
     rollback = _foundation_command(
@@ -214,6 +218,7 @@ def _integration_case(
         "control_skills": 1,
         "preserved_sentinels": len(sentinels),
         "unknown_discovery_preserved": True,
+        "quarantined_unknown": expected_quarantine,
         "total_discovery": {"agents": 16, "skills": 40},
         "rollback_restored_previous_surface": True,
     }
