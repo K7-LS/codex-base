@@ -146,3 +146,10 @@ def test_acceptance_records_explicit_remove_decision_for_unknown_entries(
         encoding="utf-8"
     )
     assert 'arguments.append("-ConfirmRemoveUnknown")' in runner
+
+
+def test_candidate_lifecycle_enables_foundation_acceptance_mode(repo_root):
+    runner = (repo_root / "tools" / "run_acceptance.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'environment["FOUNDATION_ACCEPTANCE_MODE"] = "1"' in runner
