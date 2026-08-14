@@ -131,12 +131,12 @@ def _canary(binding: dict[str, object]) -> dict[str, object]:
         after_rollback_surface_sha256="4" * 64,
         phase_statuses={
             "plan": "READY",
-            "install": "INSTALLED",
-            "doctor": "HEALTHY",
+            "install": "CANONICAL",
+            "doctor": "CANONICAL",
             "inventory": "INVENTORIED",
             "rollback": "ROLLED_BACK",
         },
-        discovery={"agents": 16, "skills": 39},
+        discovery={"agents": 16, "skills": 40},
         preserved_files=8,
     )
 

@@ -46,12 +46,12 @@ def test_canary_evidence_requires_exact_rollback_and_discovery():
         after_rollback_surface_sha256="c" * 64,
         phase_statuses={
             "plan": "READY",
-            "install": "INSTALLED",
-            "doctor": "HEALTHY",
+            "install": "CANONICAL",
+            "doctor": "CANONICAL",
             "inventory": "INVENTORIED",
             "rollback": "ROLLED_BACK",
         },
-        discovery={"agents": 16, "skills": 39},
+        discovery={"agents": 16, "skills": 40},
         preserved_files=8,
     )
 
@@ -94,8 +94,8 @@ def test_canary_evidence_fails_closed_on_rollback_or_discovery(
             after_rollback_surface_sha256=after,
             phase_statuses={
                 "plan": "READY",
-                "install": "INSTALLED",
-                "doctor": "HEALTHY",
+                "install": "CANONICAL",
+                "doctor": "CANONICAL",
                 "inventory": "INVENTORIED",
                 "rollback": "ROLLED_BACK",
             },
