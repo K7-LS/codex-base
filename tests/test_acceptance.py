@@ -163,3 +163,13 @@ def test_unknown_components_are_not_treated_as_protected_sentinels(repo_root):
     assert 'if relative not in removable_unknowns' in runner
     assert 'unknown skill was not restored' in runner
     assert 'unknown agent was not restored' in runner
+
+
+def test_installed_discovery_counts_base_and_session_tools(repo_root):
+    runner = (repo_root / "tools" / "run_acceptance.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'len(skill_files) != 40' in runner
+    assert '"base_skills": 39' in runner
+    assert '"session_tools": 1' in runner
+    assert '"total_discovery": {"agents": 16, "skills": 40}' in runner
