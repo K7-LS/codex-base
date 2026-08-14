@@ -111,9 +111,14 @@ def _seed(home: Path) -> dict[str, str]:
         path.write_bytes(payload)
     previous = home / ".codex" / "AGENTS.md"
     previous.write_text("# previous managed surface\n", encoding="utf-8")
+    removable_unknowns = {
+        ".codex/agents/legacy.toml",
+        ".agents/skills/local-personal/SKILL.md",
+    }
     return {
         relative: _sha256(home / relative)
         for relative in payloads
+        if relative not in removable_unknowns
     }
 
 
