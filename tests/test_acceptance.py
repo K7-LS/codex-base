@@ -153,3 +153,13 @@ def test_candidate_lifecycle_enables_foundation_acceptance_mode(repo_root):
         encoding="utf-8"
     )
     assert 'environment["FOUNDATION_ACCEPTANCE_MODE"] = "1"' in runner
+
+
+def test_unknown_components_are_not_treated_as_protected_sentinels(repo_root):
+    runner = (repo_root / "tools" / "run_acceptance.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'removable_unknowns = {' in runner
+    assert 'if relative not in removable_unknowns' in runner
+    assert 'unknown skill was not restored' in runner
+    assert 'unknown agent was not restored' in runner
