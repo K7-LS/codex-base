@@ -173,3 +173,13 @@ def test_installed_discovery_counts_base_and_session_tools(repo_root):
     assert '"base_skills": 39' in runner
     assert '"session_tools": 1' in runner
     assert '"total_discovery": {"agents": 16, "skills": 40}' in runner
+
+
+def test_inventory_proves_exact_unknown_quarantine(repo_root):
+    runner = (repo_root / "tools" / "run_acceptance.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'expected_quarantine = [' in runner
+    assert '".agents/skills/local-personal"' in runner
+    assert '".codex/agents/legacy.toml"' in runner
+    assert '"quarantined_unknown": expected_quarantine' in runner
