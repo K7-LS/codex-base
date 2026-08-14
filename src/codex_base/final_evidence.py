@@ -227,7 +227,7 @@ def _validate_canary(
         and canary.get("CODEX_CANARY") == "PASS"
         and canary.get("model_requests") == 0
         and canary.get("phases") == EXPECTED_PHASES
-        and canary.get("discovery") == {"agents": 16, "skills": 39}
+        and canary.get("discovery") == {"agents": 16, "skills": 40}
         and isinstance(canary.get("rollback"), dict)
         and canary["rollback"].get("byte_identical") is True
         and canary.get("credentials_included") is False
