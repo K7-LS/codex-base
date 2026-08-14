@@ -664,11 +664,11 @@ def _build_release_from_export(
                     "allowed_entries": [
                         "mcp_servers.k7-autocad-bridge",
                         "mcp_servers.k7-revit-bridge",
-                        "plugins.documents",
-                        "plugins.pdf",
-                        "plugins.presentations",
-                        "plugins.spreadsheets",
-                        "plugins.template-creator",
+                        'plugins."documents@openai-primary-runtime"',
+                        'plugins."pdf@openai-primary-runtime"',
+                        'plugins."presentations@openai-primary-runtime"',
+                        'plugins."spreadsheets@openai-primary-runtime"',
+                        'plugins."template-creator@openai-primary-runtime"',
                     ],
                 }
             ],
