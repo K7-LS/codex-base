@@ -258,11 +258,11 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
         assert reconcile["allowed_entries"] == [
             "mcp_servers.k7-autocad-bridge",
             "mcp_servers.k7-revit-bridge",
-            'plugins."documents@openai-primary-runtime"',
-            'plugins."pdf@openai-primary-runtime"',
-            'plugins."presentations@openai-primary-runtime"',
-            'plugins."spreadsheets@openai-primary-runtime"',
-            'plugins."template-creator@openai-primary-runtime"',
+            "plugins.documents@openai-primary-runtime",
+            "plugins.pdf@openai-primary-runtime",
+            "plugins.presentations@openai-primary-runtime",
+            "plugins.spreadsheets@openai-primary-runtime",
+            "plugins.template-creator@openai-primary-runtime",
         ]
         baseline = package_manifest["session_tools_baseline"]
         assert baseline["manifest_path"] == (
