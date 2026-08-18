@@ -20,6 +20,7 @@ from codex_base.promotion import _verify_candidate  # noqa: E402
 
 
 SUPPORTED_CLIENT = "0.146.0-alpha.3.1"
+CANARY_LOCAL_EXCEPTION = ".agents/skills/local-canary"
 
 
 def _run_json(command: list[str], environment: dict[str, str]) -> dict[str, Any]:
@@ -73,6 +74,7 @@ def _foundation_command(
     ]
     if package is not None:
         command.extend(["-Package", str(package)])
+        command.extend(["-LocalExceptionPath", CANARY_LOCAL_EXCEPTION])
     if target is not None:
         command.extend(["-Target", target])
     return command

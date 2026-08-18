@@ -148,6 +148,14 @@ def test_acceptance_records_explicit_remove_decision_for_unknown_entries(
     assert 'arguments.append("-ConfirmRemoveUnknown")' in runner
 
 
+def test_live_canary_preserves_its_seeded_local_skill_explicitly(repo_root):
+    runner = (repo_root / "tools" / "run_live_canary.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'CANARY_LOCAL_EXCEPTION = ".agents/skills/local-canary"' in runner
+    assert 'command.extend(["-LocalExceptionPath", CANARY_LOCAL_EXCEPTION])' in runner
+
+
 def test_candidate_lifecycle_enables_foundation_acceptance_mode(repo_root):
     runner = (repo_root / "tools" / "run_acceptance.py").read_text(
         encoding="utf-8"
