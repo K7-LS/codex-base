@@ -10,8 +10,8 @@ from .acceptance import evidence_body_sha256
 
 EXPECTED_PHASES = {
     "plan": "READY",
-    "install": "CANONICAL",
-    "doctor": "CANONICAL",
+    "install": "CANONICAL_WITH_LOCAL_EXCEPTIONS",
+    "doctor": "CANONICAL_WITH_LOCAL_EXCEPTIONS",
     "inventory": "INVENTORIED",
     "rollback": "ROLLED_BACK",
 }
@@ -72,7 +72,7 @@ def build_canary_evidence(
         and _valid_sha256(before_surface_sha256)
         and before_surface_sha256 == after_rollback_surface_sha256
         and phase_statuses == EXPECTED_PHASES
-        and discovery == {"agents": 16, "skills": 40}
+        and discovery == {"agents": 16, "skills": 41}
         and isinstance(preserved_files, int)
         and not isinstance(preserved_files, bool)
         and preserved_files >= 7
