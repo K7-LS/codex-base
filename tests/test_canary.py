@@ -51,7 +51,7 @@ def test_canary_evidence_requires_exact_rollback_and_discovery():
             "inventory": "INVENTORIED",
             "rollback": "ROLLED_BACK",
         },
-        discovery={"agents": 16, "skills": 40},
+        discovery={"agents": 16, "skills": 41},
         preserved_files=8,
     )
 
@@ -69,7 +69,7 @@ def test_canary_evidence_requires_exact_rollback_and_discovery():
     [
         ("d" * 64, 16, 39),
         ("c" * 64, 15, 39),
-        ("c" * 64, 16, 38),
+        ("c" * 64, 16, 40),
     ],
 )
 def test_canary_evidence_fails_closed_on_rollback_or_discovery(
