@@ -136,7 +136,7 @@ def _canary(binding: dict[str, object]) -> dict[str, object]:
             "inventory": "INVENTORIED",
             "rollback": "ROLLED_BACK",
         },
-        discovery={"agents": 16, "skills": 40},
+        discovery={"agents": 16, "skills": 41},
         preserved_files=8,
     )
 
