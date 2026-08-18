@@ -10,8 +10,8 @@ from .acceptance import evidence_body_sha256
 
 EXPECTED_PHASES = {
     "plan": "READY",
-    "install": "CANONICAL",
-    "doctor": "CANONICAL",
+    "install": "CANONICAL_WITH_LOCAL_EXCEPTIONS",
+    "doctor": "CANONICAL_WITH_LOCAL_EXCEPTIONS",
     "inventory": "INVENTORIED",
     "rollback": "ROLLED_BACK",
 }

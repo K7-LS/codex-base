@@ -46,8 +46,8 @@ def test_canary_evidence_requires_exact_rollback_and_discovery():
         after_rollback_surface_sha256="c" * 64,
         phase_statuses={
             "plan": "READY",
-            "install": "CANONICAL",
-            "doctor": "CANONICAL",
+            "install": "CANONICAL_WITH_LOCAL_EXCEPTIONS",
+            "doctor": "CANONICAL_WITH_LOCAL_EXCEPTIONS",
             "inventory": "INVENTORIED",
             "rollback": "ROLLED_BACK",
         },
@@ -94,8 +94,8 @@ def test_canary_evidence_fails_closed_on_rollback_or_discovery(
             after_rollback_surface_sha256=after,
             phase_statuses={
                 "plan": "READY",
-                "install": "CANONICAL",
-                "doctor": "CANONICAL",
+                "install": "CANONICAL_WITH_LOCAL_EXCEPTIONS",
+                "doctor": "CANONICAL_WITH_LOCAL_EXCEPTIONS",
                 "inventory": "INVENTORIED",
                 "rollback": "ROLLED_BACK",
             },
