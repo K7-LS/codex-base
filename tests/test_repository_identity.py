@@ -14,13 +14,13 @@ from codex_base.repository_identity import (
 
 
 def test_canonical_repository_is_valid_for_every_release():
-    assert validated_release_repository("0.1.23") == CANONICAL_REPOSITORY
+    assert validated_release_repository("0.1.25") == CANONICAL_REPOSITORY
     assert (
-        validated_release_repository("0.1.24", CANONICAL_REPOSITORY + "/")
+        validated_release_repository("0.1.26", CANONICAL_REPOSITORY + "/")
         == CANONICAL_REPOSITORY
     )
     assert (
-        validated_release_transformation("0.1.24")
+        validated_release_transformation("0.1.26")
         == CANONICAL_TRANSFORMATION
     )
 
@@ -41,7 +41,7 @@ def test_legacy_repository_is_valid_only_for_exact_bridge_version():
         == LEGACY_BRIDGE_TRANSFORMATION
     )
     with pytest.raises(ValueError, match="legacy repository identity"):
-        validated_release_repository("0.1.24", LEGACY_BRIDGE_REPOSITORY)
+        validated_release_repository("0.1.26", LEGACY_BRIDGE_REPOSITORY)
 
 
 def test_unknown_repository_is_rejected():

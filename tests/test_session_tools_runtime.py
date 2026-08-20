@@ -193,7 +193,7 @@ def _write_release_fixture(root: Path, payload: bytes) -> dict[str, object]:
             "repository": "https://github.com/K7-LS/codex-base",
             "commit": "a" * 40,
             "tree": "b" * 40,
-            "transformation": "codex-native-v1",
+            "transformation": "codex-native-independent-v2",
         },
         "asset": {
             "name": f"codex-base-{version}.zip",

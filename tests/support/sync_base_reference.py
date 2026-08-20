@@ -488,7 +488,7 @@ def verify_downloaded_release(
         != "github.com/K7-LS/codex-base"
         or not re.fullmatch(r"[0-9a-f]{40}", str(source.get("commit") or ""))
         or not re.fullmatch(r"[0-9a-f]{40}", str(source.get("tree") or ""))
-        or source.get("transformation") != "codex-native-v1"
+        or source.get("transformation") != "codex-native-independent-v2"
     ):
         raise RuntimeError("release source provenance differs")
     lock_bytes = lock_path.read_bytes()

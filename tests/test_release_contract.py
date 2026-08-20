@@ -388,7 +388,7 @@ def test_bridge_release_uses_legacy_manifest_identity_only(
     built = build_release(
         repo_root,
         tmp_path / "dist",
-        "0.1.23",
+        "0.1.25",
         foundation,
         "https://github.com/daniileliseev1337/codex-base",
     )
@@ -398,8 +398,8 @@ def test_bridge_release_uses_legacy_manifest_identity_only(
     )
     assert built.manifest["source"]["transformation"] == "codex-native-v1"
     assert built.manifest["requires"]["verification_commands"] == [
-        "gh release verify codex-v0.1.23 "
+        "gh release verify codex-v0.1.25 "
         "-R daniileliseev1337/codex-base",
-        "gh release verify-asset codex-v0.1.23 codex-base-0.1.23.zip "
+        "gh release verify-asset codex-v0.1.25 codex-base-0.1.25.zip "
         "-R daniileliseev1337/codex-base",
     ]

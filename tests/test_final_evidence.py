@@ -26,7 +26,7 @@ def _binding() -> dict[str, object]:
             "repository": "https://github.com/K7-LS/codex-base",
             "commit": "d" * 40,
             "tree": "e" * 40,
-            "transformation": "codex-native-v1",
+            "transformation": "codex-native-independent-v2",
         },
         "foundation_engine_version": "0.2.1",
         "foundation_engine_manifest_sha256": "f" * 64,

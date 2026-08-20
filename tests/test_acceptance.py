@@ -29,7 +29,7 @@ def _release_manifest() -> dict[str, object]:
             "repository": "https://github.com/example/codex-base",
             "commit": "4" * 40,
             "tree": "5" * 40,
-            "transformation": "codex-native-v1",
+            "transformation": "codex-native-independent-v2",
         },
         "foundation_engine_version": "0.1.0",
         "foundation_engine_manifest_sha256": "6" * 64,
