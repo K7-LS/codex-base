@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from codex_base.acceptance import write_acceptance_evidence
 from codex_base.release import (
     SUPPORTED_CODEX_CLIENT,
+    TARGET_REPOSITORY,
     assert_clean_git_source,
     bind_acceptance_evidence,
     build_release,
@@ -229,11 +230,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", default="0.1.1")
     parser.add_argument("--foundation", required=True, type=Path)
     parser.add_argument("--foundation-evidence", required=True, type=Path)
+    parser.add_argument("--repository", default=TARGET_REPOSITORY)
     args = parser.parse_args(argv)
 
     root = ROOT
     dist = _candidate_dist_path(root, args.version)
-    source = assert_clean_git_source(root)
+    source = assert_clean_git_source(root, args.repository)
     work = root / ".work" / "acceptance"
     if work.exists():
         shutil.rmtree(work)
@@ -261,8 +263,20 @@ def main(argv: list[str] | None = None) -> int:
     ):
         raise SystemExit("Foundation engine bytes differ from acceptance")
 
-    first = build_release(root, work / "build-one", args.version, foundation)
-    second = build_release(root, work / "build-two", args.version, foundation)
+    first = build_release(
+        root,
+        work / "build-one",
+        args.version,
+        foundation,
+        args.repository,
+    )
+    second = build_release(
+        root,
+        work / "build-two",
+        args.version,
+        foundation,
+        args.repository,
+    )
     deterministic = (
         _sha256(first.zip_path) == _sha256(second.zip_path)
         and first.manifest_path.read_bytes() == second.manifest_path.read_bytes()

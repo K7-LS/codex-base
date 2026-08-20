@@ -241,7 +241,7 @@ def test_sync_powershell_runtime_is_target_neutral_and_policy_driven(
     assert policy == {
         "schema_version": 1,
         "target": "codex",
-        "repository": "daniileliseev1337/codex-base",
+        "repository": "K7-LS/codex-base",
         "tag_prefix": "codex-v",
         "transformation": "codex-native-v1",
         "install_root": ".codex",
@@ -273,7 +273,7 @@ def test_sync_powershell_runtime_is_target_neutral_and_policy_driven(
     }
     source = script.read_text(encoding="utf-8").lower()
     for forbidden in (
-        "daniileliseev1337",
+        "K7-LS",
         "codex-base",
         "claude-base",
         "opencode-base",

@@ -22,7 +22,7 @@ POWERSHELLS = [
     for value in (shutil.which("pwsh.exe"), shutil.which("powershell.exe"))
     if value
 ]
-REPOSITORY = "daniileliseev1337/codex-base"
+REPOSITORY = "K7-LS/codex-base"
 
 
 def _sha256_bytes(payload: bytes) -> str:
@@ -190,7 +190,7 @@ def _write_release_fixture(root: Path, payload: bytes) -> dict[str, object]:
         "foundation_engine_version": "0.3.0",
         "foundation_engine_manifest_sha256": "1" * 64,
         "source": {
-            "repository": "https://github.com/daniileliseev1337/codex-base",
+            "repository": "https://github.com/K7-LS/codex-base",
             "commit": "a" * 40,
             "tree": "b" * 40,
             "transformation": "codex-native-v1",

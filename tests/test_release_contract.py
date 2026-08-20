@@ -376,5 +376,29 @@ def test_clean_release_gate_rejects_reparse_point_in_managed_source(
 def test_component_provenance_is_native_not_generated_from_another_base(repo_root):
     lock = build_component_lock(repo_root, "0.1.0")
     source = lock["provenance"]["native_repository"]
-    assert source["repository"] == "https://github.com/daniileliseev1337/codex-base"
+    assert source["repository"] == "https://github.com/K7-LS/codex-base"
     assert source["transformation"] == "codex-native-independent-v2"
+
+
+def test_bridge_release_uses_legacy_manifest_identity_only(
+    repo_root: Path,
+    tmp_path: Path,
+):
+    foundation = _fake_foundation(tmp_path / "foundation")
+    built = build_release(
+        repo_root,
+        tmp_path / "dist",
+        "0.1.22",
+        foundation,
+        "https://github.com/daniileliseev1337/codex-base",
+    )
+
+    assert built.manifest["source"]["repository"] == (
+        "https://github.com/daniileliseev1337/codex-base"
+    )
+    assert built.manifest["requires"]["verification_commands"] == [
+        "gh release verify codex-v0.1.22 "
+        "-R daniileliseev1337/codex-base",
+        "gh release verify-asset codex-v0.1.22 codex-base-0.1.22.zip "
+        "-R daniileliseev1337/codex-base",
+    ]

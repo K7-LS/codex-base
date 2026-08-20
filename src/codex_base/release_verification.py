@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .acceptance import evidence_body_sha256
+from .repository_identity import validated_release_repository
 
 
 def _load_object(path: Path) -> dict[str, Any]:
@@ -48,11 +49,12 @@ def build_release_verification(
         or not isinstance(asset, dict)
     ):
         raise ValueError("stable release manifest is invalid")
-    repository = str(source.get("repository") or "").removeprefix(
+    version = str(manifest.get("version") or "")
+    repository_url = str(source.get("repository") or "").rstrip("/")
+    validated_release_repository(version, repository_url)
+    repository = repository_url.removeprefix(
         "https://github.com/"
     ).rstrip("/")
-    if repository != "daniileliseev1337/codex-base":
-        raise ValueError("stable release repository differs")
     if (
         release_api.get("tag_name") != manifest.get("tag")
         or release_api.get("draft") is not False

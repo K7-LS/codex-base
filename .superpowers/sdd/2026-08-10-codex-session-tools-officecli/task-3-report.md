@@ -9,7 +9,7 @@
 
 ## Runtime contract
 
-- Target: `codex`; repository: `daniileliseev1337/codex-base`.
+- Target: `codex`; repository: `K7-LS/codex-base`.
 - State: `%USERPROFILE%/.llm-foundation/state/session-tools/codex/state.json`.
 - Journal: `%USERPROFILE%/.llm-foundation/state/session-tools/codex/active-transaction.json`.
 - Baseline: `%USERPROFILE%/.codex/base/runtime/session-tools-baseline.json`.

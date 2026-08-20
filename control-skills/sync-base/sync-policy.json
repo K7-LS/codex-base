@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "target": "codex",
-  "repository": "daniileliseev1337/codex-base",
+  "repository": "K7-LS/codex-base",
   "tag_prefix": "codex-v",
   "transformation": "codex-native-v1",
   "install_root": ".codex",

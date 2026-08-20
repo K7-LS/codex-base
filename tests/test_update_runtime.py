@@ -87,7 +87,7 @@ def _write_release_fixture(
 ) -> tuple[str, Path, dict[str, object]]:
     tag = "codex-v0.1.0"
     source = {
-        "repository": "https://github.com/daniileliseev1337/codex-base",
+        "repository": "https://github.com/K7-LS/codex-base",
         "commit": "1" * 40,
         "tree": "2" * 40,
         "transformation": "codex-native-v1",
