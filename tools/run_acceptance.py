@@ -21,6 +21,7 @@ from codex_base.release import (
     bind_acceptance_evidence,
     build_release,
 )
+from codex_base.repository_identity import validated_release_transformation
 
 
 def _sha256(path: Path) -> str:
@@ -235,7 +236,11 @@ def main(argv: list[str] | None = None) -> int:
 
     root = ROOT
     dist = _candidate_dist_path(root, args.version)
-    source = assert_clean_git_source(root, args.repository)
+    source = assert_clean_git_source(
+        root,
+        args.repository,
+        validated_release_transformation(args.version, args.repository),
+    )
     work = root / ".work" / "acceptance"
     if work.exists():
         shutil.rmtree(work)
