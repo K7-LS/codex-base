@@ -83,8 +83,9 @@ function Get-LlmSyncPolicy {
             '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
         ) -or
         [string]$policy.tag_prefix -notmatch '^[a-z][a-z0-9-]*-v$' -or
-        [string]$policy.transformation -notmatch (
-            '^[a-z][a-z0-9-]*-native-v[0-9]+$'
+        [string]$policy.transformation -notin @(
+            'codex-native-v1',
+            'codex-native-independent-v2'
         ) -or
         [string]$policy.install_root -notmatch (
             '^[.A-Za-z0-9_-]+(?:/[.A-Za-z0-9_-]+)*$'

@@ -90,7 +90,7 @@ def _write_release_fixture(
         "repository": "https://github.com/K7-LS/codex-base",
         "commit": "1" * 40,
         "tree": "2" * 40,
-        "transformation": "codex-native-v1",
+        "transformation": "codex-native-independent-v2",
     }
     lock = {
         "schema_version": 1,

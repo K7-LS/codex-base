@@ -620,7 +620,8 @@ function Assert-ReleaseManifest {
     if ([string]$Manifest.source.repository -cne ('https://github.com/' + $script:Repository) -or
         [string]$Manifest.source.commit -cnotmatch '^[0-9a-f]{40}$' -or
         [string]$Manifest.source.tree -cnotmatch '^[0-9a-f]{40}$' -or
-        [string]$Manifest.source.transformation -cne 'codex-native-v1') {
+        [string]$Manifest.source.transformation -cne
+            'codex-native-independent-v2') {
         throw 'INVALID_RELEASE_MANIFEST'
     }
     Assert-ExactProperties $Manifest.asset @('name', 'sha256', 'bytes') 'INVALID_RELEASE_MANIFEST'

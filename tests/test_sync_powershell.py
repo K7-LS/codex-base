@@ -130,7 +130,7 @@ def _write_verified_release_fixture(
         "repository": "https://github.com/example/codex-base",
         "commit": "a" * 40,
         "tree": "b" * 40,
-        "transformation": "codex-native-v1",
+        "transformation": "codex-native-independent-v2",
     }
     binding = {
         "target": "codex",
@@ -243,7 +243,7 @@ def test_sync_powershell_runtime_is_target_neutral_and_policy_driven(
         "target": "codex",
         "repository": "K7-LS/codex-base",
         "tag_prefix": "codex-v",
-        "transformation": "codex-native-v1",
+        "transformation": "codex-native-independent-v2",
         "install_root": ".codex",
         "client": {
             "id": "codex-cli",

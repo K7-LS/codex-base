@@ -7,7 +7,7 @@ LEGACY_BRIDGE_REPOSITORY = (
     "https://github.com/daniileliseev1337/codex-base"
 )
 LEGACY_BRIDGE_TRANSFORMATION = "codex-native-v1"
-LEGACY_BRIDGE_VERSION = "0.1.23"
+LEGACY_BRIDGE_VERSION = "0.1.25"
 
 
 def validated_release_repository(

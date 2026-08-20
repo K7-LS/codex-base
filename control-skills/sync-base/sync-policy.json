@@ -3,7 +3,7 @@
   "target": "codex",
   "repository": "K7-LS/codex-base",
   "tag_prefix": "codex-v",
-  "transformation": "codex-native-v1",
+  "transformation": "codex-native-independent-v2",
   "install_root": ".codex",
   "client": {
     "id": "codex-cli",

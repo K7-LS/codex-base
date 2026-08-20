@@ -135,7 +135,7 @@ def test_release_verification_rejects_changed_local_asset(tmp_path: Path):
 def test_release_verification_accepts_exact_legacy_bridge(tmp_path: Path):
     manifest_path, asset_path, manifest = _manifest(
         tmp_path,
-        version="0.1.23",
+        version="0.1.25",
         repository="https://github.com/daniileliseev1337/codex-base",
     )
 
@@ -161,7 +161,7 @@ def test_release_verification_rejects_legacy_identity_after_bridge(
 ):
     manifest_path, asset_path, manifest = _manifest(
         tmp_path,
-        version="0.1.24",
+        version="0.1.26",
         repository="https://github.com/daniileliseev1337/codex-base",
     )
 
