@@ -2,10 +2,12 @@ from __future__ import annotations
 
 
 CANONICAL_REPOSITORY = "https://github.com/K7-LS/codex-base"
+CANONICAL_TRANSFORMATION = "codex-native-independent-v2"
 LEGACY_BRIDGE_REPOSITORY = (
     "https://github.com/daniileliseev1337/codex-base"
 )
-LEGACY_BRIDGE_VERSION = "0.1.22"
+LEGACY_BRIDGE_TRANSFORMATION = "codex-native-v1"
+LEGACY_BRIDGE_VERSION = "0.1.23"
 
 
 def validated_release_repository(
@@ -23,3 +25,13 @@ def validated_release_repository(
             f"version {LEGACY_BRIDGE_VERSION}"
         )
     raise ValueError("release repository differs from the canonical repository")
+
+
+def validated_release_transformation(
+    version: str,
+    repository: str | None = None,
+) -> str:
+    validated = validated_release_repository(version, repository)
+    if validated == LEGACY_BRIDGE_REPOSITORY:
+        return LEGACY_BRIDGE_TRANSFORMATION
+    return CANONICAL_TRANSFORMATION

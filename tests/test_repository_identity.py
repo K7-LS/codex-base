@@ -4,17 +4,24 @@ import pytest
 
 from codex_base.repository_identity import (
     CANONICAL_REPOSITORY,
+    CANONICAL_TRANSFORMATION,
     LEGACY_BRIDGE_REPOSITORY,
+    LEGACY_BRIDGE_TRANSFORMATION,
     LEGACY_BRIDGE_VERSION,
     validated_release_repository,
+    validated_release_transformation,
 )
 
 
 def test_canonical_repository_is_valid_for_every_release():
-    assert validated_release_repository("0.1.22") == CANONICAL_REPOSITORY
+    assert validated_release_repository("0.1.23") == CANONICAL_REPOSITORY
     assert (
-        validated_release_repository("0.1.23", CANONICAL_REPOSITORY + "/")
+        validated_release_repository("0.1.24", CANONICAL_REPOSITORY + "/")
         == CANONICAL_REPOSITORY
+    )
+    assert (
+        validated_release_transformation("0.1.24")
+        == CANONICAL_TRANSFORMATION
     )
 
 
@@ -26,8 +33,15 @@ def test_legacy_repository_is_valid_only_for_exact_bridge_version():
         )
         == LEGACY_BRIDGE_REPOSITORY
     )
+    assert (
+        validated_release_transformation(
+            LEGACY_BRIDGE_VERSION,
+            LEGACY_BRIDGE_REPOSITORY,
+        )
+        == LEGACY_BRIDGE_TRANSFORMATION
+    )
     with pytest.raises(ValueError, match="legacy repository identity"):
-        validated_release_repository("0.1.23", LEGACY_BRIDGE_REPOSITORY)
+        validated_release_repository("0.1.24", LEGACY_BRIDGE_REPOSITORY)
 
 
 def test_unknown_repository_is_rejected():

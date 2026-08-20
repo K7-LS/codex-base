@@ -14,7 +14,9 @@ from typing import Iterator
 
 from .repository_identity import (
     CANONICAL_REPOSITORY,
+    CANONICAL_TRANSFORMATION,
     validated_release_repository,
+    validated_release_transformation,
 )
 from .session_tools import (
     SessionToolsBuild,
@@ -27,7 +29,7 @@ from .session_tools import (
 
 SUPPORTED_CODEX_CLIENT = "0.146.0-alpha.3.1"
 TARGET_REPOSITORY = CANONICAL_REPOSITORY
-TRANSFORMATION_ID = "codex-native-independent-v2"
+TRANSFORMATION_ID = CANONICAL_TRANSFORMATION
 FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
 
@@ -165,18 +167,20 @@ def _git_output(repo_root: Path, *arguments: str) -> str:
 def git_source_identity(
     repo_root: Path,
     repository: str = TARGET_REPOSITORY,
+    transformation: str = TRANSFORMATION_ID,
 ) -> dict[str, str]:
     return {
         "repository": repository,
         "commit": _git_output(repo_root, "rev-parse", "HEAD"),
         "tree": _git_output(repo_root, "rev-parse", "HEAD^{tree}"),
-        "transformation": TRANSFORMATION_ID,
+        "transformation": transformation,
     }
 
 
 def assert_clean_git_source(
     repo_root: Path,
     repository: str = TARGET_REPOSITORY,
+    transformation: str = TRANSFORMATION_ID,
 ) -> dict[str, str]:
     source_roots = (
         repo_root / "AGENTS.md",
@@ -211,7 +215,7 @@ def assert_clean_git_source(
         raise ValueError(
             "release acceptance requires a clean Git worktree"
         )
-    return git_source_identity(repo_root, repository)
+    return git_source_identity(repo_root, repository, transformation)
 
 
 @contextmanager
@@ -487,7 +491,15 @@ def build_release(
     )
     dist_root.mkdir(parents=True, exist_ok=True)
     release_repository = validated_release_repository(version, repository)
-    identity = git_source_identity(repo_root, release_repository)
+    release_transformation = validated_release_transformation(
+        version,
+        release_repository,
+    )
+    identity = git_source_identity(
+        repo_root,
+        release_repository,
+        release_transformation,
+    )
     with _export_committed_tree(repo_root, identity) as source_root:
         component_lock = build_component_lock(
             source_root,
