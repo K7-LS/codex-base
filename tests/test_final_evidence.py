@@ -23,7 +23,7 @@ def _binding() -> dict[str, object]:
         "package_manifest_sha256": "b" * 64,
         "components_lock_sha256": "c" * 64,
         "source": {
-            "repository": "https://github.com/daniileliseev1337/codex-base",
+            "repository": "https://github.com/K7-LS/codex-base",
             "commit": "d" * 40,
             "tree": "e" * 40,
             "transformation": "codex-native-v1",

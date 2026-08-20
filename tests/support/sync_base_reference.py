@@ -21,7 +21,7 @@ from typing import Callable, Iterator, Sequence
 from urllib.parse import quote
 
 
-REPOSITORY = "daniileliseev1337/codex-base"
+REPOSITORY = "K7-LS/codex-base"
 TAG_PATTERN = re.compile(r"^codex-v(\d+)\.(\d+)\.(\d+)$")
 REQUIRED_ASSETS = {
     "release-manifest.json",
@@ -485,7 +485,7 @@ def verify_downloaded_release(
     if (
         not isinstance(source, dict)
         or str(source.get("repository") or "").removeprefix("https://")
-        != "github.com/daniileliseev1337/codex-base"
+        != "github.com/K7-LS/codex-base"
         or not re.fullmatch(r"[0-9a-f]{40}", str(source.get("commit") or ""))
         or not re.fullmatch(r"[0-9a-f]{40}", str(source.get("tree") or ""))
         or source.get("transformation") != "codex-native-v1"

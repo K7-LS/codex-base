@@ -130,7 +130,7 @@ def _release_verification(
     asset = stable["asset"]
     verification = {
         "schema_version": 1,
-        "repository": "daniileliseev1337/codex-base",
+        "repository": "K7-LS/codex-base",
         "tag": stable["tag"],
         "release_state": {
             "draft": False,

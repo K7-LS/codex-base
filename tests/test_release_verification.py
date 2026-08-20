@@ -10,17 +10,22 @@ from codex_base.acceptance import evidence_body_sha256
 from codex_base.release_verification import build_release_verification
 
 
-def _manifest(tmp_path: Path) -> tuple[Path, Path, dict[str, object]]:
-    asset = tmp_path / "codex-base-0.1.1.zip"
+def _manifest(
+    tmp_path: Path,
+    *,
+    version: str = "0.1.1",
+    repository: str = "https://github.com/K7-LS/codex-base",
+) -> tuple[Path, Path, dict[str, object]]:
+    asset = tmp_path / f"codex-base-{version}.zip"
     asset.write_bytes(b"accepted-candidate-bytes")
     manifest = {
         "schema_version": 1,
         "target": "codex",
-        "version": "0.1.1",
-        "tag": "codex-v0.1.1",
+        "version": version,
+        "tag": f"codex-v{version}",
         "channel": "stable",
         "source": {
-            "repository": "https://github.com/daniileliseev1337/codex-base",
+            "repository": repository,
         },
         "asset": {
             "name": asset.name,
@@ -56,7 +61,7 @@ def test_release_verification_binds_immutable_release_and_exact_asset(
     )
 
     assert evidence["RELEASE_INTEGRITY"] == "PASS"
-    assert evidence["repository"] == "daniileliseev1337/codex-base"
+    assert evidence["repository"] == "K7-LS/codex-base"
     assert evidence["tag"] == "codex-v0.1.1"
     assert evidence["assets"] == [
         {
@@ -112,6 +117,55 @@ def test_release_verification_rejects_changed_local_asset(tmp_path: Path):
     asset_path.write_bytes(b"changed-after-acceptance")
 
     with pytest.raises(ValueError, match="asset binding"):
+        build_release_verification(
+            manifest_path=manifest_path,
+            asset_path=asset_path,
+            release_api={
+                "tag_name": manifest["tag"],
+                "draft": False,
+                "prerelease": False,
+                "immutable": True,
+            },
+            release_attestation_output=b"{}",
+            asset_attestation_output=b"{}",
+            gh_version="gh version 2.96.0",
+        )
+
+
+def test_release_verification_accepts_exact_legacy_bridge(tmp_path: Path):
+    manifest_path, asset_path, manifest = _manifest(
+        tmp_path,
+        version="0.1.22",
+        repository="https://github.com/daniileliseev1337/codex-base",
+    )
+
+    evidence = build_release_verification(
+        manifest_path=manifest_path,
+        asset_path=asset_path,
+        release_api={
+            "tag_name": manifest["tag"],
+            "draft": False,
+            "prerelease": False,
+            "immutable": True,
+        },
+        release_attestation_output=b"{}",
+        asset_attestation_output=b"{}",
+        gh_version="gh version 2.96.0",
+    )
+
+    assert evidence["repository"] == "daniileliseev1337/codex-base"
+
+
+def test_release_verification_rejects_legacy_identity_after_bridge(
+    tmp_path: Path,
+):
+    manifest_path, asset_path, manifest = _manifest(
+        tmp_path,
+        version="0.1.23",
+        repository="https://github.com/daniileliseev1337/codex-base",
+    )
+
+    with pytest.raises(ValueError, match="legacy repository identity"):
         build_release_verification(
             manifest_path=manifest_path,
             asset_path=asset_path,

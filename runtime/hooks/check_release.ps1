@@ -69,7 +69,7 @@ try {
             -HomePath $env:USERPROFILE `
             -ScriptBlock {
                 Invoke-LlmJsonGet `
-                    -Uri 'https://api.github.com/repos/daniileliseev1337/codex-base/releases?per_page=20' `
+                    -Uri 'https://api.github.com/repos/K7-LS/codex-base/releases?per_page=20' `
                     -UserAgent 'codex-base-version-check/1' `
                     -TimeoutSeconds 5
             }

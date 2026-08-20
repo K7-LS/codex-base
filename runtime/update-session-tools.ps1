@@ -12,7 +12,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $script:Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $script:Target = 'codex'
-$script:Repository = 'daniileliseev1337/codex-base'
+$script:Repository = 'K7-LS/codex-base'
 $script:MaxZipBytes = 10MB
 $script:MaxExpandedBytes = 8MB
 $script:MaxFileBytes = 1MB

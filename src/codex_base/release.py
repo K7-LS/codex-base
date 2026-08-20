@@ -12,6 +12,10 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterator
 
+from .repository_identity import (
+    CANONICAL_REPOSITORY,
+    validated_release_repository,
+)
 from .session_tools import (
     SessionToolsBuild,
     build_session_tools_bundle,
@@ -22,7 +26,7 @@ from .session_tools import (
 
 
 SUPPORTED_CODEX_CLIENT = "0.146.0-alpha.3.1"
-TARGET_REPOSITORY = "https://github.com/daniileliseev1337/codex-base"
+TARGET_REPOSITORY = CANONICAL_REPOSITORY
 TRANSFORMATION_ID = "codex-native-independent-v2"
 FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
@@ -158,16 +162,22 @@ def _git_output(repo_root: Path, *arguments: str) -> str:
     return result.stdout.strip()
 
 
-def git_source_identity(repo_root: Path) -> dict[str, str]:
+def git_source_identity(
+    repo_root: Path,
+    repository: str = TARGET_REPOSITORY,
+) -> dict[str, str]:
     return {
-        "repository": TARGET_REPOSITORY,
+        "repository": repository,
         "commit": _git_output(repo_root, "rev-parse", "HEAD"),
         "tree": _git_output(repo_root, "rev-parse", "HEAD^{tree}"),
         "transformation": TRANSFORMATION_ID,
     }
 
 
-def assert_clean_git_source(repo_root: Path) -> dict[str, str]:
+def assert_clean_git_source(
+    repo_root: Path,
+    repository: str = TARGET_REPOSITORY,
+) -> dict[str, str]:
     source_roots = (
         repo_root / "AGENTS.md",
         repo_root / "agents",
@@ -201,7 +211,7 @@ def assert_clean_git_source(repo_root: Path) -> dict[str, str]:
         raise ValueError(
             "release acceptance requires a clean Git worktree"
         )
-    return git_source_identity(repo_root)
+    return git_source_identity(repo_root, repository)
 
 
 @contextmanager
@@ -470,12 +480,14 @@ def build_release(
     dist_root: Path,
     version: str,
     foundation_root: Path,
+    repository: str | None = None,
 ) -> ReleaseBuild:
     foundation_version, foundation_manifest_sha256 = _validate_foundation(
         foundation_root
     )
     dist_root.mkdir(parents=True, exist_ok=True)
-    identity = git_source_identity(repo_root)
+    release_repository = validated_release_repository(version, repository)
+    identity = git_source_identity(repo_root, release_repository)
     with _export_committed_tree(repo_root, identity) as source_root:
         component_lock = build_component_lock(
             source_root,
@@ -682,6 +694,9 @@ def _build_release_from_export(
     zip_path = dist_root / f"codex-base-{version}.zip"
     _write_zip(zip_path, entries)
     zip_payload = zip_path.read_bytes()
+    repository_slug = identity["repository"].removeprefix(
+        "https://github.com/"
+    ).rstrip("/")
     release_manifest = {
         "schema_version": 1,
         "target": "codex",
@@ -707,10 +722,10 @@ def _build_release_from_export(
             "immutable_release": True,
             "release_attestation": True,
             "verification_commands": [
-                f"gh release verify codex-v{version} -R daniileliseev1337/codex-base",
+                f"gh release verify codex-v{version} -R {repository_slug}",
                 (
                     f"gh release verify-asset codex-v{version} "
-                    f"{zip_path.name} -R daniileliseev1337/codex-base"
+                    f"{zip_path.name} -R {repository_slug}"
                 ),
             ],
         },
