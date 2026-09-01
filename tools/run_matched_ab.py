@@ -19,6 +19,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codex_base.matched_ab import (  # noqa: E402
+    CANDIDATE_AGENTS,
+    CANDIDATE_SESSION_TOOL,
+    CANDIDATE_SKILLS,
     GuardViolation,
     SUPPORTED_CLIENT,
     build_codex_command,
@@ -48,6 +51,9 @@ def _json_bytes(value: Any) -> bytes:
 
 # Контракт бенчмарка — единый источник для runner и final composer.
 from codex_base.matched_ab import (  # noqa: E402
+    CANDIDATE_AGENTS,
+    CANDIDATE_SESSION_TOOL,
+    CANDIDATE_SKILLS,
     LEGACY_AGENTS,
     LEGACY_SKILLS,
     LEGACY_SURFACE_SHA256,
@@ -183,6 +189,11 @@ def _foundation_install(
         encoding="utf-8",
         check=False,
         timeout=180,
+        # Движок принимает channel=candidate только в acceptance-режиме
+        # (foundation.ps1: проверка release manifest binding). run_acceptance и
+        # run_live_canary его выставляют, A/B-runner — нет, поэтому платный
+        # прогон падал на установке кандидата ещё до первого вызова.
+        env={**os.environ, "FOUNDATION_ACCEPTANCE_MODE": "1"},
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -191,10 +202,21 @@ def _foundation_install(
         )
     agents = list((home / ".codex" / "agents").glob("*.toml"))
     skills = list((home / ".agents" / "skills").glob("*/SKILL.md"))
-    if len(agents) != 16 or len(skills) != 39:
+    if len(agents) != CANDIDATE_AGENTS or len(skills) != CANDIDATE_SKILLS:
         raise RuntimeError(
-            "candidate discovery differs after install: "
-            f"agents={len(agents)}, skills={len(skills)}"
+            "candidate discovery differs after install: expected agents="
+            f"{CANDIDATE_AGENTS}, skills={CANDIDATE_SKILLS}; actual agents="
+            f"{len(agents)}, skills={len(skills)}"
+        )
+    # Одного количества мало: сороковым мог оказаться неправильный файл.
+    # ru-writing-style приходит каналом session-tools, остальные 39 —
+    # основным деревом пакета.
+    if not (
+        home / ".agents" / "skills" / CANDIDATE_SESSION_TOOL / "SKILL.md"
+    ).is_file():
+        raise RuntimeError(
+            "candidate session tool is missing after install: "
+            f"{CANDIDATE_SESSION_TOOL}"
         )
 
 

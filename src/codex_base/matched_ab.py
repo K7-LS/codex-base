@@ -39,7 +39,15 @@ MATCHED_AB_BENCHMARK = {
         "inventory_manifest_sha256":
             "225d23d71d3ad09120aaedf2c16468a5f98615c81f43bba39626a504bed9fc2a",
     },
-    "candidate": {"agents_count": 16, "skills_count": 39},
+    # A/B сравнивает установленные model-visible homes, а не структуру ZIP:
+    # ru-writing-style доставляется каналом session-tools-baseline и после
+    # установки материализуется в .agents/skills сороковым.
+    "candidate": {
+        "agents_count": 16,
+        "base_skills_count": 39,
+        "session_tools_count": 1,
+        "skills_count": 40,
+    },
     "plugin_policy": {
         "plugins": "disabled",
         "skill_search": "disabled",
@@ -62,6 +70,9 @@ MATCHED_AB_BENCHMARK = {
 LEGACY_AGENTS = MATCHED_AB_BENCHMARK["legacy"]["agents_count"]
 LEGACY_SKILLS = MATCHED_AB_BENCHMARK["legacy"]["skills_count"]
 LEGACY_SURFACE_SHA256 = MATCHED_AB_BENCHMARK["legacy"]["surface_sha256"]
+CANDIDATE_AGENTS = MATCHED_AB_BENCHMARK["candidate"]["agents_count"]
+CANDIDATE_SKILLS = MATCHED_AB_BENCHMARK["candidate"]["skills_count"]
+CANDIDATE_SESSION_TOOL = "ru-writing-style"
 
 
 def validate_matched_ab_benchmark(evidence: dict) -> None:
