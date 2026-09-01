@@ -10,7 +10,9 @@ from .matched_ab import (
     DISABLED_TOOL_FEATURES,
     INHERITABLE_PACKAGE_CHANGES,
     MAX_INPUT_TOKENS,
+    MATCHED_AB_SCHEMA_VERSION,
     MIN_MEDIAN_INPUT_REDUCTION,
+    validate_matched_ab_benchmark,
     MODEL,
     REASONING_EFFORT,
     SUPPORTED_CLIENT,
@@ -78,6 +80,10 @@ def _validate_matched(
     matched: dict[str, Any],
     binding: dict[str, Any],
 ) -> None:
+    # Fail-open: сборка возвращала FULL_RELEASE_CODEX=PASS даже после
+    # удаления matched["surfaces"] и подмены benchmark. Контракт бенчмарка и
+    # digest контрольной поверхности проверяются первыми и жёстко.
+    validate_matched_ab_benchmark(matched)
     client = matched.get("client")
     package = matched.get("candidate_package")
     tools = matched.get("tools")
@@ -177,7 +183,7 @@ def _validate_matched(
         and inheritance.get("new_paid_calls") == 0
     )
     valid = (
-        matched.get("schema_version") == 1
+        matched.get("schema_version") == MATCHED_AB_SCHEMA_VERSION
         and matched.get("MATCHED_AB") == "PASS"
         and (direct_calls or inherited_calls)
         and client
@@ -261,6 +267,9 @@ def compose_final_evidence(
             "PROGRAM_RELEASE": "1/3",
             "RELEASE_INTEGRITY": release_integrity,
             "matched_ab_metrics": matched_ab["metrics"],
+            # Бенчмарк переносится в финальное evidence: по нему видно, на
+            # какой контрольной поверхности получен платный результат.
+            "matched_ab_benchmark": matched_ab["benchmark"],
             "evidence_sources": {
                 "candidate_offline": _source_record(candidate),
                 "matched_ab": _source_record(matched_ab),

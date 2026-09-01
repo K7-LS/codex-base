@@ -44,6 +44,18 @@ def _json_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+
+
+# Контракт бенчмарка — единый источник для runner и final composer.
+from codex_base.matched_ab import (  # noqa: E402
+    LEGACY_AGENTS,
+    LEGACY_SKILLS,
+    LEGACY_SURFACE_SHA256,
+    MATCHED_AB_BENCHMARK,
+    MATCHED_AB_SCHEMA_VERSION,
+)
+
+
 def _surface_digest(home: Path) -> str:
     selected: list[Path] = []
     for path in (
@@ -113,10 +125,29 @@ def _copy_legacy_surface(source_profile: Path, destination: Path) -> None:
         destination_directory = destination_skills / source_directory.name
         destination_directory.mkdir()
         shutil.copy2(skill, destination_directory / "SKILL.md")
-    if len(list((destination / ".codex" / "agents").glob("*.toml"))) != 16:
-        raise RuntimeError("legacy snapshot does not contain 16 agents")
-    if len(list((destination / ".agents" / "skills").glob("*/SKILL.md"))) != 46:
-        raise RuntimeError("legacy snapshot does not contain 45 skills")
+    agents = len(list((destination / ".codex" / "agents").glob("*.toml")))
+    if agents != LEGACY_AGENTS:
+        raise RuntimeError(
+            "legacy snapshot agents: expected "
+            f"{LEGACY_AGENTS}, actual {agents}"
+        )
+    # Счётчик был механически поднят до 46 вместе с candidate guard 38 -> 39,
+    # хотя исторический A/B r3 выполнялся на 45 legacy skills, и текст ошибки
+    # остался прежним. Счётчик — ранний fail-closed индикатор; доказательную
+    # ценность даёт точный digest поверхности ниже.
+    skills = len(list((destination / ".agents" / "skills").glob("*/SKILL.md")))
+    if skills != LEGACY_SKILLS:
+        raise RuntimeError(
+            "legacy snapshot skills: expected "
+            f"{LEGACY_SKILLS}, actual {skills}"
+        )
+    # (3) поверхность обязана совпасть с исторической байт-в-байт
+    digest = _surface_digest(destination)
+    if digest != LEGACY_SURFACE_SHA256:
+        raise RuntimeError(
+            "legacy surface digest differs: expected "
+            f"{LEGACY_SURFACE_SHA256}, actual {digest}"
+        )
 
 
 def _foundation_install(
@@ -391,7 +422,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--codex", default=shutil.which("codex") or "codex")
     parser.add_argument("--foundation", type=Path)
     parser.add_argument("--candidate-package", type=Path)
-    parser.add_argument("--legacy-profile", type=Path, default=Path.home())
+    parser.add_argument("--legacy-profile", type=Path, default=None)
     parser.add_argument(
         "--auth-file",
         type=Path,
@@ -456,6 +487,11 @@ def main(argv: list[str] | None = None) -> int:
             candidate_home / ".codex" / "auth.json",
         ]
         try:
+            if args.legacy_profile is None:
+                raise SystemExit(
+                    "--legacy-profile обязателен для --execute-approved-four: "
+                    "домашний каталог по умолчанию больше не подставляется"
+                )
             _copy_legacy_surface(args.legacy_profile.resolve(), legacy_home)
             _foundation_install(foundation, package, candidate_home)
             _copy_auth_without_reading(

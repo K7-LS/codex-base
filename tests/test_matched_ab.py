@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import pathlib
+
+import copy
+
 import hashlib
 import json
 import subprocess
@@ -877,3 +881,71 @@ def test_cli_defaults_to_dry_run_and_exposes_only_prompt_hashes(
     assert all("prompt_sha256" in call for call in plan["calls"])
     assert "привет" not in result.stdout
     assert "что ты умеешь" not in result.stdout
+
+
+def _contract_evidence():
+    """Валидное matched-evidence нового бенчмарка."""
+    from codex_base.matched_ab import MATCHED_AB_BENCHMARK, LEGACY_SURFACE_SHA256
+    return {
+        "benchmark": copy.deepcopy(MATCHED_AB_BENCHMARK),
+        "surfaces": {
+            "legacy_sha256": LEGACY_SURFACE_SHA256,
+            "candidate_sha256": "b" * 64,
+        },
+    }
+
+
+def test_benchmark_contract_rejects_missing_and_wrong_benchmark():
+    # Codex нашёл fail-open: сборка возвращала PASS после подмены benchmark.
+    from codex_base.matched_ab import validate_matched_ab_benchmark
+
+    validate_matched_ab_benchmark(_contract_evidence())
+
+    without = _contract_evidence()
+    del without["benchmark"]
+    with pytest.raises(ValueError, match="benchmark contract"):
+        validate_matched_ab_benchmark(without)
+
+    wrong = _contract_evidence()
+    wrong["benchmark"]["id"] = "самодельный-baseline"
+    with pytest.raises(ValueError, match="benchmark contract"):
+        validate_matched_ab_benchmark(wrong)
+
+
+def test_benchmark_contract_requires_surfaces_and_matching_digest():
+    from codex_base.matched_ab import validate_matched_ab_benchmark
+
+    without = _contract_evidence()
+    del without["surfaces"]
+    with pytest.raises(ValueError, match="surfaces are missing"):
+        validate_matched_ab_benchmark(without)
+
+    broken = _contract_evidence()
+    broken["surfaces"]["candidate_sha256"] = "не-хеш"
+    with pytest.raises(ValueError, match="surface digest is invalid"):
+        validate_matched_ab_benchmark(broken)
+
+    drifted = _contract_evidence()
+    drifted["surfaces"]["legacy_sha256"] = "c" * 64
+    with pytest.raises(ValueError, match="legacy surface differs"):
+        validate_matched_ab_benchmark(drifted)
+
+
+def test_benchmark_contract_requires_plugins_disabled():
+    from codex_base.matched_ab import validate_matched_ab_benchmark
+
+    evidence = _contract_evidence()
+    evidence["benchmark"]["plugin_policy"]["plugins"] = "enabled"
+    with pytest.raises(ValueError, match="benchmark contract"):
+        validate_matched_ab_benchmark(evidence)
+
+
+def test_paid_run_requires_an_explicit_legacy_profile():
+    # Домашний каталог больше не подставляется молча: контрольная поверхность
+    # для платного прогона задаётся явно.
+    source = (
+        pathlib.Path(__file__).resolve().parents[1] / "tools" / "run_matched_ab.py"
+    ).read_text(encoding="utf-8")
+    assert '"--legacy-profile", type=Path, default=None' in source
+    assert "--legacy-profile обязателен" in source
+    assert "LEGACY_SURFACE_SHA256" in source
