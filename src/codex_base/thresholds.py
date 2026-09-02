@@ -1,10 +1,18 @@
 """Пороги matched A/B — единый источник без импортов внутри пакета.
 
-Решение владельца 2026-09-01 (OWNER_OVERRIDE): порог 0.25 назначался против
-монолитной legacy из 45 скиллов; после plugin cutover 27.08 контрольная
-поверхность похудела до 37, и выигрыш кандидата против уже облегчённой базы
-закономерно меньше (замер 0.226). Прежнее значение и причина — в benchmark
-contract (threshold_override).
+DEFAULT_MIN_MEDIAN_INPUT_REDUCTION — общая планка для любого benchmark.
+Снижать её глобально нельзя: послабление действовало бы на все будущие
+эксперименты. Отклонение оформляется в конкретном benchmark contract полем
+threshold_override (authority, previous, reason_code) и действует только там.
 """
 
-MIN_MEDIAN_INPUT_REDUCTION = 0.20
+DEFAULT_MIN_MEDIAN_INPUT_REDUCTION = 0.25
+
+
+def effective_min_reduction(benchmark: dict | None = None) -> float:
+    """Порог для benchmark: override, если он объявлен в самом контракте."""
+    override = (benchmark or {}).get("threshold_override") or {}
+    value = override.get("median_input_reduction_min")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return DEFAULT_MIN_MEDIAN_INPUT_REDUCTION
