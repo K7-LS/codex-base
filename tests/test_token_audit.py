@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+from codex_base.thresholds import MIN_MEDIAN_INPUT_REDUCTION
+
 from codex_base.token_audit import audit_static_context
 
 
@@ -23,7 +25,7 @@ def test_static_audit_never_claims_paid_matched_ab(repo_root):
     report = audit_static_context(repo_root)
 
     assert report["results"]["MATCHED_AB"] == "NOT_RUN"
-    assert report["thresholds"]["matched_ab_total_input_reduction_min"] == 0.25
+    assert report["thresholds"]["matched_ab_total_input_reduction_min"] == MIN_MEDIAN_INPUT_REDUCTION
 
 
 def test_tracked_token_report_matches_current_hot_and_warm_surfaces(repo_root):

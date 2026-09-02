@@ -5,6 +5,7 @@ import json
 import math
 import re
 import tomllib
+from .thresholds import MIN_MEDIAN_INPUT_REDUCTION
 from pathlib import Path
 
 
@@ -95,7 +96,7 @@ def audit_static_context(
         },
         "thresholds": {
             "base_controlled_startup_reduction_min": 0.70,
-            "matched_ab_total_input_reduction_min": 0.25,
+            "matched_ab_total_input_reduction_min": MIN_MEDIAN_INPUT_REDUCTION,
         },
         "results": {
             "base_controlled_startup_reduction": reduction,

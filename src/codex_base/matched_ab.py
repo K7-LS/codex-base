@@ -17,7 +17,7 @@ SUPPORTED_CLIENT = "0.146.0-alpha.3.1"
 MODEL = "gpt-5.6-terra"
 REASONING_EFFORT = "low"
 MAX_INPUT_TOKENS = 100_000
-MIN_MEDIAN_INPUT_REDUCTION = 0.25
+from .thresholds import MIN_MEDIAN_INPUT_REDUCTION  # noqa: E402
 
 # Benchmark contract matched A/B. Единый источник для runner и final composer:
 # после plugin cutover 2026-08-27 монолитная поверхность прогона r3 (45 skills)
@@ -65,6 +65,13 @@ MATCHED_AB_BENCHMARK = {
     "transition": {
         "reason_code": "DELIVERY_TOPOLOGY_CHANGED_AND_R3_FIXTURE_UNAVAILABLE",
         "plugin_cutover_date": "2026-08-27",
+    },
+    "threshold_override": {
+        "median_input_reduction_min": 0.20,
+        "previous": 0.25,
+        "authority": "OWNER",
+        "date": "2026-09-01",
+        "reason_code": "CONTROL_SURFACE_REDUCED_AFTER_PLUGIN_CUTOVER",
     },
 }
 LEGACY_AGENTS = MATCHED_AB_BENCHMARK["legacy"]["agents_count"]

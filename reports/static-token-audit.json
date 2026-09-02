@@ -65,6 +65,6 @@
   "schema_version": 1,
   "thresholds": {
     "base_controlled_startup_reduction_min": 0.7,
-    "matched_ab_total_input_reduction_min": 0.25
+    "matched_ab_total_input_reduction_min": 0.2
   }
 }
