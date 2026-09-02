@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import copy
+
 import hashlib
 
 import pytest
 
 from codex_base.acceptance import evidence_body_sha256
 from codex_base.canary import build_canary_evidence
-from codex_base.final_evidence import compose_final_evidence
-from codex_base.matched_ab import summarize_results
+from codex_base.final_evidence import _validate_matched, compose_final_evidence
+from codex_base.matched_ab import LEGACY_SURFACE_SHA256, summarize_results
 
 
 def _binding() -> dict[str, object]:
@@ -83,7 +85,7 @@ def _matched(binding: dict[str, object]) -> dict[str, object]:
     return summarize_results(
         rows,
         client_version="0.146.0-alpha.3.1",
-        legacy_surface_sha256="1" * 64,
+        legacy_surface_sha256=LEGACY_SURFACE_SHA256,
         candidate_surface_sha256="2" * 64,
         candidate_package_sha256=binding["asset"]["sha256"],
         candidate_package_bytes=binding["asset"]["bytes"],
@@ -253,3 +255,25 @@ def test_final_evidence_rejects_tampered_or_unbound_inputs(tamper: str):
             matched_ab=matched,
             canary=canary,
         )
+
+
+def test_final_evidence_is_fail_closed_on_tampered_matched_benchmark(tmp_path):
+    # Найденный Codex fail-open: сборка возвращала FULL_RELEASE_CODEX=PASS
+    # после удаления surfaces и подмены benchmark. Теперь оба случая — отказ.
+    binding = _binding()
+    matched = _matched(binding)
+
+    stripped = copy.deepcopy(matched)
+    del stripped["surfaces"]
+    with pytest.raises(ValueError):
+        _validate_matched(stripped, binding)
+
+    forged = copy.deepcopy(matched)
+    forged["benchmark"] = {"id": "самодельный", "mode": "DIRECT_NEW_BASELINE"}
+    with pytest.raises(ValueError):
+        _validate_matched(forged, binding)
+
+    drifted = copy.deepcopy(matched)
+    drifted["surfaces"]["legacy_sha256"] = "d" * 64
+    with pytest.raises(ValueError):
+        _validate_matched(drifted, binding)

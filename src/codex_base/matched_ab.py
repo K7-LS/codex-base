@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import re
 import statistics
 import zipfile
 from dataclasses import dataclass
@@ -16,7 +17,108 @@ SUPPORTED_CLIENT = "0.146.0-alpha.3.1"
 MODEL = "gpt-5.6-terra"
 REASONING_EFFORT = "low"
 MAX_INPUT_TOKENS = 100_000
-MIN_MEDIAN_INPUT_REDUCTION = 0.25
+from .thresholds import (  # noqa: E402
+    DEFAULT_MIN_MEDIAN_INPUT_REDUCTION,
+    effective_min_reduction,
+)
+
+# Benchmark contract matched A/B. Единый источник для runner и final composer:
+# после plugin cutover 2026-08-27 монолитная поверхность прогона r3 (45 skills)
+# не воспроизводится, точный снапшот утрачен. Новый baseline зарегистрирован
+# ДО первого платного вызова и заморожен — выбирать или править контрольную
+# поверхность после получения платных результатов нельзя.
+MATCHED_AB_SCHEMA_VERSION = 2
+MATCHED_AB_BENCHMARK = {
+    "id": "matched-ab-post-cutover-standalone-v1",
+    "mode": "DIRECT_NEW_BASELINE",
+    "profile_kind": "standalone-home-v1",
+    "scope": "BASE_ONLY_PLUGINS_DISABLED",
+    "digest_algorithm": "sha256-path-nul-file-sha256-lf-v1",
+    "legacy": {
+        "surface_sha256":
+            "2998e655fda87853135954f025700dfea5373fb75948a2c2ffac932b305f93ea",
+        "agents_count": 16,
+        "skills_count": 37,
+        "inventory_manifest_sha256":
+            "225d23d71d3ad09120aaedf2c16468a5f98615c81f43bba39626a504bed9fc2a",
+    },
+    # A/B сравнивает установленные model-visible homes, а не структуру ZIP:
+    # ru-writing-style доставляется каналом session-tools-baseline и после
+    # установки материализуется в .agents/skills сороковым.
+    "candidate": {
+        "agents_count": 16,
+        "base_skills_count": 39,
+        "session_tools_count": 1,
+        "skills_count": 40,
+    },
+    "plugin_policy": {
+        "plugins": "disabled",
+        "skill_search": "disabled",
+        "plugin_skills_included": False,
+    },
+    "predecessor": {
+        "id": "matched-ab-2026-07-28-r3",
+        "legacy_surface_sha256":
+            "4f731305bc2659236c63548fbd8593a060fda217eb901f7c851e7073b82d3592",
+        "evidence_file_sha256":
+            "a47c4499e191b27cbc011598a9f5ebae6e5ca52d0990c9f82fe51f0012918537",
+        "evidence_body_sha256":
+            "709c1a4b11a9d1756f8d0235e2b5175d4201229a291b69d147933e859399d8c4",
+    },
+    "transition": {
+        "reason_code": "DELIVERY_TOPOLOGY_CHANGED_AND_R3_FIXTURE_UNAVAILABLE",
+        "plugin_cutover_date": "2026-08-27",
+    },
+    "threshold_override": {
+        "median_input_reduction_min": 0.20,
+        "previous": 0.25,
+        "authority": "OWNER",
+        "date": "2026-09-01",
+        "reason_code": "CONTROL_SURFACE_REDUCED_AFTER_PLUGIN_CUTOVER",
+    },
+}
+# Порог этого benchmark: override действует только здесь, общая планка
+# DEFAULT_MIN_MEDIAN_INPUT_REDUCTION для прочих экспериментов не меняется.
+MIN_MEDIAN_INPUT_REDUCTION = effective_min_reduction(MATCHED_AB_BENCHMARK)
+LEGACY_AGENTS = MATCHED_AB_BENCHMARK["legacy"]["agents_count"]
+LEGACY_SKILLS = MATCHED_AB_BENCHMARK["legacy"]["skills_count"]
+LEGACY_SURFACE_SHA256 = MATCHED_AB_BENCHMARK["legacy"]["surface_sha256"]
+CANDIDATE_AGENTS = MATCHED_AB_BENCHMARK["candidate"]["agents_count"]
+CANDIDATE_SKILLS = MATCHED_AB_BENCHMARK["candidate"]["skills_count"]
+CANDIDATE_SESSION_TOOL = "ru-writing-style"
+
+
+def validate_matched_ab_benchmark(evidence: dict) -> None:
+    """Fail-closed проверка benchmark contract и поверхностей.
+
+    Прежняя сборка final evidence возвращала PASS даже после удаления
+    matched["surfaces"] и подмены benchmark — дыра закрывается здесь.
+    """
+    benchmark = evidence.get("benchmark")
+    if benchmark != MATCHED_AB_BENCHMARK:
+        raise ValueError("matched A/B benchmark contract differs")
+    surfaces = evidence.get("surfaces")
+    if not isinstance(surfaces, dict):
+        raise ValueError("matched A/B surfaces are missing")
+    for name in ("legacy_sha256", "candidate_sha256"):
+        value = surfaces.get(name)
+        if (
+            not isinstance(value, str)
+            or re.fullmatch(r"[0-9a-f]{64}", value) is None
+        ):
+            raise ValueError(f"matched A/B surface digest is invalid: {name}")
+    if surfaces["legacy_sha256"] != LEGACY_SURFACE_SHA256:
+        raise ValueError("matched A/B legacy surface differs from benchmark")
+    policy = benchmark["plugin_policy"]
+    if (
+        policy["plugins"] != "disabled"
+        or policy["skill_search"] != "disabled"
+        or policy["plugin_skills_included"] is not False
+        or "plugins" not in DISABLED_TOOL_FEATURES
+        or "skill_search" not in DISABLED_TOOL_FEATURES
+    ):
+        raise ValueError("matched A/B plugin policy differs from runtime")
+
 DISABLED_TOOL_FEATURES = (
     "apps",
     "auth_elicitation",
@@ -409,7 +511,8 @@ def summarize_results(
     )
     passed = reduction >= MIN_MEDIAN_INPUT_REDUCTION
     evidence = {
-        "schema_version": 1,
+        "schema_version": MATCHED_AB_SCHEMA_VERSION,
+        "benchmark": MATCHED_AB_BENCHMARK,
         "generated_at_utc": datetime.now(timezone.utc)
         .replace(microsecond=0)
         .isoformat()
@@ -544,7 +647,8 @@ def _validate_direct_evidence_for_inheritance(
     metrics = evidence.get("metrics")
     package_sha256 = hashlib.sha256(package.read_bytes()).hexdigest()
     valid = (
-        evidence.get("schema_version") == 1
+        evidence.get("schema_version") == MATCHED_AB_SCHEMA_VERSION
+        and evidence.get("benchmark") == MATCHED_AB_BENCHMARK
         and evidence.get("MATCHED_AB") == "PASS"
         and evidence.get("calls_authorized") == 4
         and evidence.get("calls_completed") == 4
@@ -759,7 +863,8 @@ def summarize_abort(
         )
 
     evidence = {
-        "schema_version": 1,
+        "schema_version": MATCHED_AB_SCHEMA_VERSION,
+        "benchmark": MATCHED_AB_BENCHMARK,
         "generated_at_utc": datetime.now(timezone.utc)
         .replace(microsecond=0)
         .isoformat()
