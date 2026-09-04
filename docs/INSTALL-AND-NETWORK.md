@@ -71,9 +71,9 @@ pwsh -NoProfile -File $Foundation `
 
 | Метрика | Legacy hub | Candidate |
 | --- | ---: | ---: |
-| Base-controlled bytes | 72,077 | 14,288 |
-| Оценка tokens `ceil(bytes/3)` | 24,026 | 4,763 |
-| Сокращение | — | 80.18% |
+| Base-controlled bytes | 72,077 | 14,549 |
+| Оценка tokens `ceil(bytes/3)` | 24,026 | 4,850 |
+| Сокращение | — | 79.81% |
 
 Это оценка статического startup/discovery-контекста, а не биллинг провайдера.
 Matched A/B пока не запускался, поэтому снижение total input по реальным
