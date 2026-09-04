@@ -1201,7 +1201,7 @@ def test_unknown_journal_operation_blocks_without_cleanup(
     )
 
 
-def test_direct_hook_runs_updater_first_and_emits_one_json_notice(tmp_path: Path) -> None:
+def test_session_start_skips_updater_and_keeps_release_notice(tmp_path: Path) -> None:
     runtime = tmp_path / "runtime"
     shutil.copytree(REPOSITORY_ROOT / "runtime", runtime)
     base_home = tmp_path / "base"
@@ -1254,11 +1254,12 @@ def test_direct_hook_runs_updater_first_and_emits_one_json_notice(tmp_path: Path
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert marker.read_text(encoding="utf-8") == "yes"
+    assert not marker.exists()
     lines = [line for line in result.stdout.splitlines() if line]
     assert len(lines) == 1
     message = json.loads(lines[0])["systemMessage"]
-    assert "TOOLS_APPLIED_NEXT_SESSION" in message
+    assert "TOOLS_APPLIED_NEXT_SESSION" not in message
+    assert "BLOCKED" not in message
     assert "Codex-base 0.1.4 is available" in message
     release_state = json.loads(
         (base_home / "state" / "update-check.json").read_text(encoding="utf-8")
@@ -1267,4 +1268,4 @@ def test_direct_hook_runs_updater_first_and_emits_one_json_notice(tmp_path: Path
     hooks = json.loads((REPOSITORY_ROOT / "runtime" / "hooks.json").read_text())
     hook = hooks["hooks"]["SessionStart"][0]["hooks"][0]
     assert hook["timeout"] >= 35
-    assert "next session" in hooks["description"].lower()
+    assert hooks["description"] == "One-way Codex base release notification."
