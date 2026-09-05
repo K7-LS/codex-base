@@ -19,19 +19,6 @@ function Complete-Hook {
     exit 0
 }
 
-try {
-    $updaterPath = Join-Path $runtimeRoot 'update-session-tools.ps1'
-    $powershellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    if ((Test-Path -LiteralPath $updaterPath -PathType Leaf) -and
-        (Test-Path -LiteralPath $powershellPath -PathType Leaf)) {
-        $updaterOutput = @(& $powershellPath -NoLogo -NoProfile -NonInteractive `
-            -ExecutionPolicy Bypass -File $updaterPath -HookFallback 2>$null)
-        if ($updaterOutput -ccontains 'TOOLS_APPLIED_NEXT_SESSION') {
-            $script:SystemMessages.Add('TOOLS_APPLIED_NEXT_SESSION')
-        }
-    }
-} catch { }
-
 $connectionRuntime = Join-Path $runtimeRoot 'connection.ps1'
 if (-not (Test-Path -LiteralPath $connectionRuntime -PathType Leaf)) { Complete-Hook }
 . $connectionRuntime

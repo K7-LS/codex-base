@@ -1,5 +1,5 @@
 {
-  "description": "Codex session-tools auto-pull; direct launch exposes new tools on the next session, plus one-way base release notification.",
+  "description": "One-way Codex base release notification.",
   "hooks": {
     "SessionStart": [
       {
