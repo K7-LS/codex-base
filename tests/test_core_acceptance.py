@@ -4,6 +4,7 @@ import copy
 import json
 
 import pytest
+from foundation_evidence_support import synthetic_foundation
 
 from codex_base.core_acceptance import (
     ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON,
@@ -102,6 +103,8 @@ def test_last_promotion_gate_does_not_trust_top_pass(bundle, legacy, tamper):
     core, binding, package, root = bundle
     final = {"schema_version": 1, "target": "codex", "version": "test", "release_binding": binding,
              **{gate: "PASS" for gate in REQUIRED_FULL_RELEASE_GATES}, "PROGRAM_RELEASE": "1/3", "core_behavior_evidence": core}
+    final["FOUNDATION_SYNTHETIC"] = "NOT_RUN"
+    final.update(synthetic_foundation(binding, package))
     final.update(acceptance_protocol=ACCEPTANCE_PROTOCOL, MATCHED_AB="NOT_REQUIRED", matched_ab_not_required_reason=MATCHED_AB_NOT_REQUIRED_REASON)
     if legacy:
         final["release_integrity_contract"] = {"mode": "CONSUMER_VERIFIED_BEFORE_EVIDENCE"}

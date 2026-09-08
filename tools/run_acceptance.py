@@ -8,12 +8,14 @@ import re
 import shutil
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codex_base.acceptance import write_acceptance_evidence
+from codex_base.foundation_evidence import collect_foundation_artifacts, validate_foundation_engine
 from codex_base.release import (
     SUPPORTED_CODEX_CLIENT,
     TARGET_REPOSITORY,
@@ -59,6 +61,15 @@ def _files(root: Path) -> dict[str, str]:
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
+
+
+def _test_environment(foundation: Path) -> dict[str, str]:
+    environment = os.environ.copy()
+    for key in ("PYTEST_ADDOPTS", "PYTEST_PLUGINS", "PYTHONPATH", "PYTHONOPTIMIZE"):
+        environment.pop(key, None)
+    environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    environment["CODEX_BASE_FOUNDATION_SOURCE"] = str(foundation / "foundation.ps1")
+    return environment
 
 
 def _foundation_command(
@@ -227,10 +238,13 @@ def _integration_case(
 
 
 def main(argv: list[str] | None = None) -> int:
+    if not __debug__:
+        raise ValueError("Acceptance cannot run with Python optimization enabled")
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", default="0.1.1")
     parser.add_argument("--foundation", required=True, type=Path)
     parser.add_argument("--foundation-evidence", required=True, type=Path)
+    parser.add_argument("--work-root", type=Path, help="New isolated work directory; a short path supports Windows PowerShell 5.1")
     parser.add_argument("--repository", default=TARGET_REPOSITORY)
     args = parser.parse_args(argv)
 
@@ -241,16 +255,23 @@ def main(argv: list[str] | None = None) -> int:
         args.repository,
         validated_release_transformation(args.version, args.repository),
     )
-    work = root / ".work" / "acceptance"
-    if work.exists():
-        shutil.rmtree(work)
+    work = (args.work_root or root / ".work" / "acceptance").absolute()
+    if work.exists() or dist.exists():
+        raise ValueError("Acceptance work and candidate directories must be new; preserve earlier evidence")
     work.mkdir(parents=True)
     foundation = args.foundation.resolve()
     foundation_evidence = json.loads(
         args.foundation_evidence.resolve().read_text(encoding="utf-8")
     )
-    if foundation_evidence.get("FOUNDATION_SYNTHETIC") != "PASS":
-        raise SystemExit("Foundation evidence is not PASS")
+    foundation_artifacts = collect_foundation_artifacts(
+        foundation_evidence, args.foundation_evidence.resolve().parent,
+    )
+    validate_foundation_engine(
+        foundation_evidence, foundation_artifacts,
+        {"foundation_engine_version": (foundation / "VERSION").read_text(encoding="utf-8").strip(),
+         "foundation_engine_manifest_sha256": _sha256(foundation / "engine-manifest.json")},
+        engine_root=foundation,
+    )
     foundation_files = _files(foundation)
     required_foundation = {
         "VERSION",
@@ -287,17 +308,29 @@ def main(argv: list[str] | None = None) -> int:
         and first.manifest_path.read_bytes() == second.manifest_path.read_bytes()
         and first.component_lock_path.read_bytes()
         == second.component_lock_path.read_bytes()
+        and (first.manifest_path.parent / first.manifest["session_tools_asset"]["name"]).read_bytes()
+        == (second.manifest_path.parent / second.manifest["session_tools_asset"]["name"]).read_bytes()
     )
 
+    test_environment = _test_environment(foundation)
+    junit_path = work / "codex-tests.xml"
     pytest_result = _run(
-        [sys.executable, "-m", "pytest", "-q"],
-        root,
+        [sys.executable, "-m", "pytest", "-q", f"--junitxml={junit_path}"],
+        root, env=test_environment,
     )
+    junit_bytes = junit_path.read_bytes()
+    junit = ET.fromstring(junit_bytes)
+    counts = {key: sum(int(suite.get(key, "0")) for suite in junit.iter("testsuite"))
+              for key in ("tests", "failures", "errors", "skipped")}
     tests = {
-        "status": "PASS" if pytest_result.returncode == 0 else "NOT_PASS",
+        "status": "PASS" if pytest_result.returncode == 0 and counts["tests"] > 0
+                  and all(counts[key] == 0 for key in ("failures", "errors", "skipped")) else "NOT_PASS",
         "returncode": pytest_result.returncode,
         "stdout": pytest_result.stdout,
         "stderr": pytest_result.stderr,
+        "counts": counts,
+        "junit_sha256": hashlib.sha256(junit_bytes).hexdigest(),
+        "junit_xml": junit_bytes.decode("utf-8"),
     }
 
     cases = []
@@ -339,12 +372,11 @@ def main(argv: list[str] | None = None) -> int:
         ),
     }
 
-    if dist.exists():
-        shutil.rmtree(dist)
     dist.mkdir(parents=True)
     for path in (
         first.zip_path,
         first.component_lock_path,
+        first.manifest_path.parent / first.manifest["session_tools_asset"]["name"],
     ):
         shutil.copy2(path, dist / path.name)
     evidence = write_acceptance_evidence(
@@ -355,6 +387,7 @@ def main(argv: list[str] | None = None) -> int:
         release_manifest=first.manifest,
         offline_integration=integration,
         test_evidence=tests,
+        foundation_artifacts=foundation_artifacts,
     )
     shutil.copy2(first.manifest_path, dist / first.manifest_path.name)
     bound_manifest = bind_acceptance_evidence(
@@ -372,6 +405,7 @@ def main(argv: list[str] | None = None) -> int:
             "acceptance_evidence_sha256"
         ],
         "FOUNDATION_SYNTHETIC": evidence["FOUNDATION_SYNTHETIC"],
+        "FOUNDATION_ENGINE_ACCEPTANCE": evidence["FOUNDATION_ENGINE_ACCEPTANCE"],
         "CANDIDATE_OFFLINE": evidence["CANDIDATE_OFFLINE"],
         "MATCHED_AB": evidence["MATCHED_AB"],
         "CODEX_CANARY": evidence["CODEX_CANARY"],

@@ -11,6 +11,8 @@ from .acceptance import (
     release_binding_from_manifest,
 )
 from .final_evidence import LEGACY_SYNC_BOOTSTRAP_CONTRACT, _validate_canary
+from .foundation_evidence import validate_foundation_engine
+from .session_tools import validate_session_tools_asset_record, validate_session_tools_release_binding
 from .core_acceptance import (
     ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON,
     copy_core_artifacts, package_source_inventory, read_json, validate_core_behavior,
@@ -19,7 +21,7 @@ from .core_acceptance import (
 
 
 REQUIRED_FULL_RELEASE_GATES = (
-    "FOUNDATION_SYNTHETIC",
+    "FOUNDATION_ENGINE_ACCEPTANCE",
     "OFFLINE_CODEX_CONTENT",
     "STATIC_TOKEN_ACCEPTANCE",
     "CODEX_OFFLINE_INTEGRATION",
@@ -79,6 +81,8 @@ def _verify_evidence(
         raise ValueError("acceptance evidence release binding differs")
     if require_full_release:
         validate_current_wire_keys(evidence)
+        if evidence.get("FOUNDATION_SYNTHETIC") != "NOT_RUN":
+            raise ValueError("current engine-only evidence cannot claim historical Foundation acceptance")
         if "core_behavior" in evidence:
             raise ValueError("obsolete core_behavior wire key collides with the PowerShell verdict key")
         if (evidence.get("acceptance_protocol") != ACCEPTANCE_PROTOCOL
@@ -88,6 +92,8 @@ def _verify_evidence(
         for gate in REQUIRED_FULL_RELEASE_GATES:
             if evidence.get(gate) != "PASS":
                 raise ValueError(f"{gate} is not PASS")
+        validate_foundation_engine(evidence.get("foundation"), evidence.get("foundation_artifacts"),
+                                   binding, package_path=package_path)
         if evidence.get("PROGRAM_RELEASE") != "1/3":
             raise ValueError("PROGRAM_RELEASE is not 1/3")
         if package_path is None or artifact_root is None:
@@ -169,6 +175,14 @@ def _verify_candidate(
     if embedded_lock != lock_bytes:
         raise ValueError("candidate embedded components lock differs")
     package_source_inventory(zip_path, binding)
+    session_asset = validate_session_tools_asset_record(manifest.get("session_tools_asset"), expected_version=version)
+    session_path = candidate_dir / session_asset["name"]
+    if not session_path.is_file() or session_path.is_symlink():
+        raise ValueError("candidate session tools asset is missing or linked")
+    validate_session_tools_release_binding(
+        release_manifest=manifest, package_manifest=package_manifest,
+        session_asset_path=session_path, package_archive_path=zip_path,
+    )
     return manifest, binding, zip_path, zip_bytes, lock_bytes
 
 
@@ -201,6 +215,16 @@ def promote_candidate(
 
     destination_zip = output_dir / source_zip.name
     destination_zip.write_bytes(zip_bytes)
+    session_name = candidate_manifest["session_tools_asset"]["name"]
+    session_bytes = (candidate_dir / session_name).read_bytes()
+    destination_session = output_dir / session_name
+    destination_session.write_bytes(session_bytes)
+    with zipfile.ZipFile(destination_zip) as archive:
+        package_manifest = read_json(archive.read("package-manifest.json"))
+    validate_session_tools_release_binding(
+        release_manifest=candidate_manifest, package_manifest=package_manifest,
+        session_asset_path=destination_session, package_archive_path=destination_zip,
+    )
     destination_lock = output_dir / "components.lock.json"
     destination_lock.write_bytes(lock_bytes)
     destination_evidence = output_dir / "acceptance-evidence.json"

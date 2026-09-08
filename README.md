@@ -32,8 +32,10 @@ py -3.12 -m pip install pytest PyYAML
 $env:PYTHONPATH = "src"
 py -3.12 -m pytest -q
 py -3.12 .\tools\run_acceptance.py `
-  --foundation ..\llm-foundation-installer\.work\acceptance\engine-ps7 `
-  --foundation-evidence ..\llm-foundation-installer\dist\foundation-acceptance.json
+  --version 0.2.0 `
+  --foundation <accepted-engine-ps7-directory> `
+  --foundation-evidence <engine-evidence-directory>\foundation-engine-acceptance.json `
+  --work-root <new-short-isolated-directory>
 ```
 
 Acceptance refuses a dirty worktree. Candidate bytes are exported from the
@@ -41,9 +43,24 @@ recorded Git commit/tree; ZIP, package manifest, component lock and evidence
 are cross-bound by SHA-256. The updater extracts and runs only the exact
 Foundation engine inside that verified ZIP.
 
+Current engine acceptance uses `foundation-engine-isolated-v1`. It verifies
+the same nine engine files in PowerShell 7 and 5.1 builds, selected engine
+tests, and seven installation/rollback scenarios in each shell. The proof
+retains the original JUnit output and 14 command receipts, bound to the
+packaged engine. It records `FOUNDATION_ENGINE_ACCEPTANCE: PASS` while
+`FOUNDATION_SYNTHETIC` and `INSTALLER_ACCEPTANCE` remain `NOT_RUN`: the
+historical full installer/GUI suite is a separate scope. Real user homes,
+User environment variables, authentication and model calls are excluded from
+these engine tests. See [the evidence contract](docs/ENGINE-ACCEPTANCE.md).
+
+Both the base ZIP and the separate `session-tools-codex-X.Y.Z.zip` must be
+present and match the embedded baseline. Promotion copies and verifies both
+archives without rebuilding them. Acceptance refuses existing work and
+candidate directories to preserve previous results.
+
 The resulting candidate remains fail-closed:
 
-- `MATCHED_AB: NOT_RUN`
+- `MATCHED_AB: NOT_REQUIRED`
 - `CORE_BEHAVIOR: NOT_RUN`
 - `CODEX_CANARY: NOT_RUN`
 - `FULL_RELEASE_CODEX: NOT_PASS`

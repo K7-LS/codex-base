@@ -157,7 +157,7 @@ def _write_verified_release_fixture(
         **{
             name: "PASS"
             for name in (
-                "FOUNDATION_SYNTHETIC",
+                "FOUNDATION_ENGINE_ACCEPTANCE",
                 "OFFLINE_CODEX_CONTENT",
                 "STATIC_TOKEN_ACCEPTANCE",
                 "CODEX_OFFLINE_INTEGRATION",
@@ -172,7 +172,15 @@ def _write_verified_release_fixture(
         "PROGRAM_RELEASE": "1/3",
         "acceptance_protocol": ACCEPTANCE_PROTOCOL,
         "MATCHED_AB": "NOT_REQUIRED",
+        "FOUNDATION_SYNTHETIC": "NOT_RUN",
         "release_binding": binding,
+        "foundation": {
+            "acceptance_protocol": "foundation-engine-isolated-v1",
+            "FOUNDATION_ENGINE_ACCEPTANCE": "PASS",
+            "FOUNDATION_SYNTHETIC": "NOT_RUN", "INSTALLER_ACCEPTANCE": "NOT_RUN",
+            "engine_version": foundation_version,
+            "engine_builds": {shell: {"files": {"engine-manifest.json": _sha256_bytes(engine_manifest)}} for shell in ("ps7", "ps51")},
+        },
     }
     evidence["RELEASE_INTEGRITY"] = release_integrity
     evidence_bytes = _json_bytes(evidence)
@@ -266,7 +274,7 @@ def test_sync_powershell_runtime_is_target_neutral_and_policy_driven(
         "evidence": {
             "style": "flat",
             "required_verdicts": [
-                "FOUNDATION_SYNTHETIC",
+                "FOUNDATION_ENGINE_ACCEPTANCE",
                 "OFFLINE_CODEX_CONTENT",
                 "STATIC_TOKEN_ACCEPTANCE",
                 "CODEX_OFFLINE_INTEGRATION",
@@ -278,6 +286,7 @@ def test_sync_powershell_runtime_is_target_neutral_and_policy_driven(
             ],
             "program_release": "1/3",
             "required_protocol": ACCEPTANCE_PROTOCOL,
+            "required_foundation_protocol": "foundation-engine-isolated-v1",
             "required_contract": contract_reference(),
         },
     }
@@ -650,6 +659,7 @@ def test_sync_powershell_accepts_prepublication_evidence_after_gh_verification(
         ("missing_protocol", "acceptance evidence current protocol differs"),
         ("wrong_protocol", "acceptance evidence current protocol differs"),
         ("fake_historical_pass", "acceptance evidence current protocol differs"),
+        ("outer_historical_pass", "acceptance evidence foundation engine protocol or binding differs"),
         ("missing_contract", "acceptance evidence core contract differs"),
         ("wrong_contract", "acceptance evidence core contract differs"),
     ],
@@ -675,6 +685,7 @@ def test_sync_powershell_rejects_failed_gate_or_cross_bound_evidence(
     elif mutation == "missing_protocol": evidence.pop("acceptance_protocol")
     elif mutation == "wrong_protocol": evidence["acceptance_protocol"] = "legacy"
     elif mutation == "fake_historical_pass": evidence["MATCHED_AB"] = "PASS"
+    elif mutation == "outer_historical_pass": evidence["FOUNDATION_SYNTHETIC"] = "PASS"
     evidence_bytes = _json_bytes(evidence)
     evidence_path.write_bytes(evidence_bytes)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -717,19 +728,17 @@ def test_sync_powershell_rejects_failed_gate_or_cross_bound_evidence(
 @pytest.mark.parametrize("executable", POWERSHELLS)
 def test_old_installed_policy_cannot_bootstrap_current_protocol(repo_root, executable, tmp_path):
     release_dir, tag = _write_verified_release_fixture(tmp_path / "release")
-    historical = []
-    for relative in ("control-skills/sync-base/tools/sync_base.ps1", "control-skills/sync-base/sync-policy.json"):
-        result = subprocess.run(["git", "show", f"HEAD:{relative}"], cwd=repo_root, capture_output=True, check=True)
-        target = tmp_path / Path(relative).name
-        target.write_bytes(result.stdout)
-        historical.append(target)
+    fixture = repo_root / "tests/support/historical-sync-base"
+    provenance = json.loads((fixture / "provenance.json").read_bytes())
+    historical = [fixture / name for name in ("sync_base.ps1", "sync-policy.json")]
+    for path in historical:
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == provenance["files"][path.name]
     policy = json.loads(historical[1].read_bytes())
-    if "MATCHED_AB" not in policy["evidence"]["required_verdicts"]:
-        pytest.skip("HEAD already contains the new consumer protocol; historical rollout needs a saved old checkout")
+    assert "MATCHED_AB" in policy["evidence"]["required_verdicts"]
     result = _run_library_probe(executable, historical[0], historical[1],
                                 f"Assert-LlmReleaseFiles -Directory '{release_dir}' -Tag '{tag}'")
     assert result.returncode != 0
-    assert "acceptance evidence is not pass: matched_ab" in (result.stdout + result.stderr).lower()
+    assert "acceptance evidence is not pass: foundation_synthetic" in (result.stdout + result.stderr).lower()
 
 
 def _mutate_release_for_embedded_core_guard(release_dir: Path, mutation: str) -> None:

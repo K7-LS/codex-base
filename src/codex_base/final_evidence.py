@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .acceptance import evidence_body_sha256
+from .foundation_evidence import validate_foundation_engine
 from .canary import EXPECTED_PHASES
 from .core_acceptance import (
     ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON,
@@ -25,7 +26,7 @@ from .matched_ab import (
 )
 
 
-OFFLINE_GATES = (
+HISTORICAL_OFFLINE_GATES = (
     "FOUNDATION_SYNTHETIC",
     "OFFLINE_CODEX_CONTENT",
     "STATIC_TOKEN_ACCEPTANCE",
@@ -33,6 +34,7 @@ OFFLINE_GATES = (
     "CODEX_TESTS",
     "CANDIDATE_OFFLINE",
 )
+OFFLINE_GATES = ("FOUNDATION_ENGINE_ACCEPTANCE",) + HISTORICAL_OFFLINE_GATES[1:]
 LEGACY_SYNC_BOOTSTRAP_CONTRACT = {
     "mode": "CONSUMER_VERIFIED_BEFORE_EVIDENCE",
     "legacy_updater": "codex-v0.1.1",
@@ -64,7 +66,7 @@ def _source_record(evidence: dict[str, Any]) -> dict[str, object]:
     }
 
 
-def _validate_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+def _validate_candidate(candidate: dict[str, Any], *, historical: bool = False) -> dict[str, Any]:
     binding = candidate.get("release_binding")
     if (
         candidate.get("schema_version") != 1
@@ -72,7 +74,8 @@ def _validate_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
         or not isinstance(binding, dict)
         or binding.get("target") != "codex"
         or candidate.get("version") != binding.get("version")
-        or any(candidate.get(gate) != "PASS" for gate in OFFLINE_GATES)
+        or any(candidate.get(gate) != "PASS" for gate in (HISTORICAL_OFFLINE_GATES if historical else OFFLINE_GATES))
+        or (not historical and candidate.get("FOUNDATION_SYNTHETIC") != "NOT_RUN")
         or not _valid_body(candidate)
     ):
         raise ValueError("candidate offline evidence is invalid")
@@ -267,7 +270,7 @@ def _validate_canary(
 
 def validate_historical_inputs(*, candidate: dict, matched_ab: dict, canary: dict) -> dict:
     """Read-only validation of the original experiment. Never promotion authority."""
-    binding = _validate_candidate(candidate)
+    binding = _validate_candidate(candidate, historical=True)
     _validate_matched(matched_ab, binding)
     _validate_canary(canary, binding)
     return {"HISTORICAL_INPUTS": "PASS", "release_eligible": False}
@@ -289,6 +292,8 @@ def compose_final_evidence(
         raise ValueError("obsolete core_behavior wire key collides with the PowerShell verdict key")
     if package_path is None or artifact_root is None:
         raise ValueError("core behavior evidence requires package and artifact paths")
+    validate_foundation_engine(candidate.get("foundation"), candidate.get("foundation_artifacts"),
+                               binding, package_path=package_path)
     validate_core_behavior(core_behavior, binding, package_path=package_path, artifact_root=artifact_root)
     _validate_canary(canary, binding, package_path)
     final = dict(candidate)

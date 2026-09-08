@@ -282,7 +282,9 @@ def write_acceptance_evidence(
     release_manifest: dict[str, object],
     offline_integration: dict[str, object] | None = None,
     test_evidence: dict[str, object] | None = None,
+    foundation_artifacts: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    from .foundation_evidence import PROTOCOL, validate_foundation_engine
     structured = validate_structured_files(repo_root)
     secrets = scan_secrets(repo_root)
     network = scan_automatic_network_surfaces(repo_root)
@@ -306,6 +308,14 @@ def write_acceptance_evidence(
         if foundation_evidence
         else "NOT_RUN"
     )
+    foundation_engine_status = "NOT_RUN"
+    foundation_engine_check = None
+    if foundation_evidence and foundation_evidence.get("acceptance_protocol") == PROTOCOL:
+        foundation_engine_check = validate_foundation_engine(
+            foundation_evidence, foundation_artifacts or {},
+            release_binding_from_manifest(release_manifest),
+        )
+        foundation_engine_status = foundation_engine_check["FOUNDATION_ENGINE_ACCEPTANCE"]
     integration_status = (
         str(offline_integration.get("status", "NOT_PASS"))
         if offline_integration
@@ -318,7 +328,7 @@ def write_acceptance_evidence(
     )
     candidate_offline = (
         content_pass
-        and foundation_status == "PASS"
+        and foundation_engine_status == "PASS"
         and integration_status == "PASS"
         and tests_status == "PASS"
     )
@@ -335,6 +345,8 @@ def write_acceptance_evidence(
         },
         "token_acceptance": token,
         "foundation": foundation_evidence,
+        "foundation_artifacts": foundation_artifacts or {},
+        "foundation_engine_check": foundation_engine_check,
         "offline_integration": offline_integration,
         "tests": test_evidence,
         "OFFLINE_CODEX_CONTENT": "PASS" if content_pass else "NOT_PASS",
@@ -342,6 +354,7 @@ def write_acceptance_evidence(
             "STATIC_TOKEN_ACCEPTANCE"
         ],
         "FOUNDATION_SYNTHETIC": foundation_status,
+        "FOUNDATION_ENGINE_ACCEPTANCE": foundation_engine_status,
         "CODEX_OFFLINE_INTEGRATION": integration_status,
         "CODEX_TESTS": tests_status,
         "CANDIDATE_OFFLINE": "PASS" if candidate_offline else "NOT_PASS",

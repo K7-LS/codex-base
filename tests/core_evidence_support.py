@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import zipfile
+from foundation_evidence_support import fake_engine_files
 
 from codex_base.core_acceptance import (
     CLAIM, PACKAGE_CONTRACT_PATH, SUITE_PATH, body_sha256, contract_bytes,
@@ -19,6 +20,9 @@ def minimal_package(root: Path, binding: dict) -> Path:
         PACKAGE_CONTRACT_PATH: contract_bytes(),
         f".codex/base/foundation/{binding['foundation_engine_version']}/foundation.ps1": b"exit 0\n",
     }
+    engine = fake_engine_files(binding["foundation_engine_version"])
+    entries.update({f".codex/base/foundation/{binding['foundation_engine_version']}/{name}": data for name, data in engine.items()})
+    binding["foundation_engine_manifest_sha256"] = sha256(engine["engine-manifest.json"])
     manifest = {
         "schema_version": 1, "target": binding["target"], "version": binding["version"],
         "core_behavior_contract": contract_reference(),

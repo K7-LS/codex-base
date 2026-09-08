@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/K7-LS/codex-base",
+  "commit": "568e5b3fb4534a9b24787a1abd6338db5b29a79f",
+  "purpose": "Read-only historical consumer library fixture; no release download or installation is executed.",
+  "files": {
+    "sync_base.ps1": "61a8229bf668600a2ef04efca10e1905314c107482883a3916358409744dcf42",
+    "sync-policy.json": "9a7b0d0c4c1982eec66cd5c3face35ab3c2effb8e5cdc72645c1b9e8b5190e1b"
+  }
+}

@@ -11,6 +11,7 @@ import pytest
 
 from codex_base.acceptance import evidence_body_sha256
 from core_evidence_support import minimal_package, core_arguments
+from foundation_evidence_support import synthetic_foundation
 from codex_base.canary import build_canary_evidence
 from codex_base.final_evidence import _validate_matched, compose_final_evidence, validate_historical_inputs
 from codex_base.core_acceptance import package_discovery, package_foundation_sha256
@@ -42,13 +43,14 @@ def _binding(tmp_path) -> dict[str, object]:
     return binding
 
 
-def _candidate(binding: dict[str, object]) -> dict[str, object]:
+def _candidate(binding: dict[str, object], package_path, *, historical=False) -> dict[str, object]:
     evidence = {
         "schema_version": 1,
         "target": "codex",
         "version": "0.1.1",
         "release_binding": binding,
         "FOUNDATION_SYNTHETIC": "PASS",
+        "FOUNDATION_ENGINE_ACCEPTANCE": "PASS",
         "OFFLINE_CODEX_CONTENT": "PASS",
         "STATIC_TOKEN_ACCEPTANCE": "PASS",
         "CODEX_OFFLINE_INTEGRATION": "PASS",
@@ -59,6 +61,11 @@ def _candidate(binding: dict[str, object]) -> dict[str, object]:
         "FULL_RELEASE_CODEX": "NOT_PASS",
         "PROGRAM_RELEASE": "0/3",
     }
+    if historical:
+        evidence.pop("FOUNDATION_ENGINE_ACCEPTANCE")
+    else:
+        evidence["FOUNDATION_SYNTHETIC"] = "NOT_RUN"
+        evidence.update(synthetic_foundation(binding, package_path))
     evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
     return evidence
 
@@ -155,7 +162,7 @@ def _canary(binding: dict[str, object], package_path=None) -> dict[str, object]:
 def test_current_composition_needs_no_historical_model_call(tmp_path, legacy):
     binding = _binding(tmp_path)
     args = core_arguments(binding, tmp_path)
-    final = compose_final_evidence(candidate=_candidate(binding),
+    final = compose_final_evidence(candidate=_candidate(binding, tmp_path / binding["asset"]["name"]),
                                    canary=_canary(binding, args["package_path"]),
                                    legacy_sync_bootstrap=legacy, **args)
     assert final["FULL_RELEASE_CODEX"] == "PASS"
@@ -175,7 +182,7 @@ def test_real_composition_round_trips_windows_json_without_case_collision(tmp_pa
         pytest.skip(f"{shell} unavailable")
     binding = _binding(tmp_path)
     args = core_arguments(binding, tmp_path)
-    final = compose_final_evidence(candidate=_candidate(binding),
+    final = compose_final_evidence(candidate=_candidate(binding, tmp_path / binding["asset"]["name"]),
                                   canary=_canary(binding, args["package_path"]), **args)
     path = tmp_path / "composed.json"
     path.write_text(json.dumps(final, ensure_ascii=False), encoding="utf-8")
@@ -196,13 +203,13 @@ def test_real_composition_round_trips_windows_json_without_case_collision(tmp_pa
 def test_current_composition_cannot_use_legacy_flag_to_skip_core(tmp_path, legacy):
     binding = _binding(tmp_path)
     with pytest.raises(ValueError, match="core behavior"):
-        compose_final_evidence(candidate=_candidate(binding), canary=_canary(binding), legacy_sync_bootstrap=legacy)
+        compose_final_evidence(candidate=_candidate(binding, tmp_path / binding["asset"]["name"]), canary=_canary(binding), legacy_sync_bootstrap=legacy)
 
 
 def test_current_composition_rejects_obsolete_case_colliding_wire_key(tmp_path):
     binding = _binding(tmp_path)
     args = core_arguments(binding, tmp_path)
-    candidate = _candidate(binding)
+    candidate = _candidate(binding, tmp_path / binding["asset"]["name"])
     candidate["core_behavior"] = {"obsolete": True}
     candidate["evidence_body_sha256"] = evidence_body_sha256(candidate)
     with pytest.raises(ValueError, match="wire key collides"):
@@ -213,7 +220,7 @@ def test_current_composition_rejects_obsolete_case_colliding_wire_key(tmp_path):
 def test_composition_rejects_case_collisions_at_any_envelope_depth(tmp_path, alias):
     binding = _binding(tmp_path)
     args = core_arguments(binding, tmp_path)
-    candidate = _candidate(binding)
+    candidate = _candidate(binding, tmp_path / binding["asset"]["name"])
     candidate[alias] = {"scope": 1, "Scope": 2} if alias == "nested" else {}
     candidate["evidence_body_sha256"] = evidence_body_sha256(candidate)
     with pytest.raises(ValueError, match="case-insensitive duplicate"):
@@ -224,7 +231,7 @@ def test_composition_rejects_case_collisions_at_any_envelope_depth(tmp_path, ali
 def test_historical_direct_and_inherited_inputs_remain_readable_not_promotable(tmp_path, inherited):
     binding = _binding(tmp_path)
     matched = _inherited_matched(binding) if inherited else _matched(binding)
-    verdict = validate_historical_inputs(candidate=_candidate(binding), matched_ab=matched, canary=_canary(binding))
+    verdict = validate_historical_inputs(candidate=_candidate(binding, tmp_path / binding["asset"]["name"], historical=True), matched_ab=matched, canary=_canary(binding))
     assert verdict == {"HISTORICAL_INPUTS": "PASS", "release_eligible": False}
     assert "FULL_RELEASE_CODEX" not in verdict
 
@@ -232,7 +239,7 @@ def test_historical_direct_and_inherited_inputs_remain_readable_not_promotable(t
 @pytest.mark.parametrize("tamper", ["candidate", "matched", "canary", "changed_inheritance", "missing_inheritance"])
 def test_historical_validation_preserves_original_checks(tmp_path, tamper):
     binding = _binding(tmp_path)
-    candidate, matched, canary = _candidate(binding), _matched(binding), _canary(binding)
+    candidate, matched, canary = _candidate(binding, tmp_path / binding["asset"]["name"], historical=True), _matched(binding), _canary(binding)
     if tamper == "candidate": candidate["CANDIDATE_OFFLINE"] = "NOT_PASS"
     elif tamper == "matched":
         matched["candidate_package"]["sha256"] = "9" * 64
@@ -264,7 +271,7 @@ def test_historical_matched_benchmark_is_still_fail_closed(tmp_path, tamper):
 def test_current_composition_requires_package_bound_canary(tmp_path):
     binding = _binding(tmp_path)
     with pytest.raises(ValueError, match="canary"):
-        compose_final_evidence(candidate=_candidate(binding), canary=_canary(binding), **core_arguments(binding, tmp_path))
+        compose_final_evidence(candidate=_candidate(binding, tmp_path / binding["asset"]["name"]), canary=_canary(binding), **core_arguments(binding, tmp_path))
 
 
 @pytest.mark.parametrize("tamper", ["missing_before", "missing_after", "unequal", "missing_foundation", "wrong_foundation", "missing_preserved"])
@@ -280,4 +287,4 @@ def test_current_canary_does_not_trust_self_hashed_rollback_pass(tmp_path, tampe
     else: del canary["preserved_files"]
     canary["evidence_body_sha256"] = evidence_body_sha256(canary)
     with pytest.raises(ValueError, match="canary"):
-        compose_final_evidence(candidate=_candidate(binding), canary=canary, **args)
+        compose_final_evidence(candidate=_candidate(binding, tmp_path / binding["asset"]["name"]), canary=canary, **args)
