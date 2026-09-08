@@ -14,6 +14,8 @@ import zipfile
 
 import pytest
 
+from codex_base.core_acceptance import contract_reference
+
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 UPDATER = REPOSITORY_ROOT / "runtime" / "update-session-tools.ps1"
@@ -143,9 +145,11 @@ def fake_gh(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return executable
 
 
-def _write_release_fixture(root: Path, payload: bytes) -> dict[str, object]:
+def _write_release_fixture(
+    root: Path, payload: bytes, *, professional: bool = False
+) -> dict[str, object]:
     root.mkdir(parents=True)
-    version = "0.1.4"
+    version = "0.2.0" if professional else "0.1.4"
     tag = f"codex-v{version}"
     tool_record = {
         "id": "ru-writing-style",
@@ -224,6 +228,11 @@ def _write_release_fixture(root: Path, payload: bytes) -> dict[str, object]:
         "acceptance_evidence_sha256": "5" * 64,
         "promoted_from_candidate_manifest_sha256": "6" * 64,
     }
+    if professional:
+        # Same envelope as the current 0.2.0 producer, with local test payloads.
+        release_manifest["core_behavior_contract"] = contract_reference()
+        release_manifest["client"]["supported_version"] = "0.153.1"
+        release_manifest["foundation_engine_version"] = "0.5.11"
     release_manifest_bytes = _json_bytes(release_manifest)
     (root / "release-manifest.json").write_bytes(release_manifest_bytes)
     return {
@@ -412,15 +421,19 @@ def _run_fallback(
 
 
 def _case(
-    tmp_path: Path, fake_gh: Path
+    tmp_path: Path, fake_gh: Path, *, professional: bool = False
 ) -> tuple[dict[str, str], Path, Path, Path, dict[str, object]]:
     payload = "---\nname: ru-writing-style\n---\n\nПиши ясно.\n".encode("utf-8")
     fixture = tmp_path / "fixture"
-    expected = _write_release_fixture(fixture, payload)
+    expected = _write_release_fixture(fixture, payload, professional=professional)
     home = tmp_path / "Профиль с пробелом"
     _write_receipt(home)
     log = tmp_path / "gh.log"
-    return _environment(home, fixture, fake_gh, log), home, fixture, log, expected
+    environment = _environment(home, fixture, fake_gh, log)
+    releases = json.loads(environment["FAKE_GH_RELEASE_LIST"])
+    releases[0]["tagName"] = expected["tag"]
+    environment["FAKE_GH_RELEASE_LIST"] = json.dumps(releases)
+    return environment, home, fixture, log, expected
 
 
 def _gh_calls(path: Path) -> list[list[str]]:
@@ -434,10 +447,13 @@ def _gh_calls(path: Path) -> list[list[str]]:
 
 
 @pytest.mark.parametrize("host", POWERSHELLS)
+@pytest.mark.parametrize("professional", [False, True], ids=["historical", "professional-core"])
 def test_managed_preflight_verifies_stable_release_and_installs_unicode_skill(
-    tmp_path: Path, host: str, fake_gh: Path
+    tmp_path: Path, host: str, fake_gh: Path, professional: bool
 ) -> None:
-    environment, home, _, log, expected = _case(tmp_path, fake_gh)
+    environment, home, _, log, expected = _case(
+        tmp_path, fake_gh, professional=professional
+    )
     payload = "---\nname: ru-writing-style\n---\n\nПиши ясно.\n".encode("utf-8")
 
     result = _run_managed(host, environment)
@@ -504,6 +520,56 @@ def test_managed_preflight_verifies_stable_release_and_installs_unicode_skill(
         / "codex"
         / "active-transaction.json"
     ).exists()
+
+
+@pytest.mark.parametrize("host", POWERSHELLS)
+@pytest.mark.parametrize(
+    "attack",
+    [
+        "unknown-release-field", "null-contract", "array-contract",
+        "missing-id", "missing-sha256", "missing-suite-sha256",
+        "wrong-id", "wrong-sha256", "wrong-suite-sha256",
+        "non-string-id", "unknown-contract-field",
+    ],
+)
+def test_professional_contract_rejects_unknown_or_changed_values_before_mutation(
+    tmp_path: Path, host: str, fake_gh: Path, attack: str
+) -> None:
+    environment, home, fixture, _, _ = _case(
+        tmp_path, fake_gh, professional=True
+    )
+    release_path = fixture / "release-manifest.json"
+    release = json.loads(release_path.read_text(encoding="utf-8"))
+    contract = release["core_behavior_contract"]
+    if attack == "unknown-release-field":
+        release["unexpected"] = "not allowed"
+    elif attack == "null-contract":
+        release["core_behavior_contract"] = None
+    elif attack == "array-contract":
+        release["core_behavior_contract"] = [contract]
+    elif attack.startswith("missing-"):
+        del contract[attack.removeprefix("missing-").replace("-", "_")]
+    elif attack == "wrong-id":
+        contract["id"] = "k7-professional-core-v2"
+    elif attack == "wrong-sha256":
+        contract["sha256"] = "0" * 64
+    elif attack == "wrong-suite-sha256":
+        contract["suite_sha256"] = "0" * 64
+    elif attack == "non-string-id":
+        contract["id"] = [contract["id"]]
+    else:
+        assert attack == "unknown-contract-field"
+        contract["unexpected"] = "not allowed"
+    release_path.write_bytes(_json_bytes(release))
+
+    result = _run_managed(host, environment)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (home / ".agents" / "skills").exists()
+    assert not (_state_root(home) / "state.json").exists()
+    assert not (_state_root(home) / "active-transaction.json").exists()
+    records = (_state_root(home) / "update.log").read_text(encoding="utf-8").splitlines()
+    assert json.loads(records[-1])["reason"] == "INVALID_RELEASE_MANIFEST"
 
 
 @pytest.mark.parametrize("host", POWERSHELLS)
