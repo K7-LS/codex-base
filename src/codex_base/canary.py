@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .acceptance import evidence_body_sha256
+from .core_acceptance import package_client, package_discovery, package_foundation_sha256
 
 
 EXPECTED_PHASES = {
@@ -57,8 +58,11 @@ def build_canary_evidence(
     phase_statuses: dict[str, str],
     discovery: dict[str, int],
     preserved_files: int,
+    package_path: Path | None = None,
 ) -> dict[str, Any]:
     asset = release_binding.get("asset")
+    expected_client = package_client(package_path) if package_path else {"id": "codex-cli", "version": "0.146.0-alpha.3.1"}
+    expected_discovery = package_discovery(package_path, release_binding) if package_path else {"agents": 16, "skills": 41}
     valid = (
         release_binding.get("target") == "codex"
         and isinstance(release_binding.get("version"), str)
@@ -67,12 +71,13 @@ def build_canary_evidence(
         and isinstance(asset.get("bytes"), int)
         and not isinstance(asset.get("bytes"), bool)
         and asset["bytes"] > 0
-        and client_version == "0.146.0-alpha.3.1"
+        and {"id": "codex-cli", "version": client_version} == expected_client
         and _valid_sha256(foundation_sha256)
+        and (package_path is None or foundation_sha256 == package_foundation_sha256(package_path, release_binding))
         and _valid_sha256(before_surface_sha256)
         and before_surface_sha256 == after_rollback_surface_sha256
         and phase_statuses == EXPECTED_PHASES
-        and discovery == {"agents": 16, "skills": 41}
+        and discovery == expected_discovery
         and isinstance(preserved_files, int)
         and not isinstance(preserved_files, bool)
         and preserved_files >= 7
@@ -106,6 +111,7 @@ def build_canary_evidence(
         "credentials_included": False,
         "personal_data_included": False,
         "CODEX_CANARY": "PASS",
+        "canary_protocol": "package-bound-v1" if package_path else "historical-v1",
     }
     evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
     return evidence

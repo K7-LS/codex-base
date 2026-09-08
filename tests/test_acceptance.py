@@ -84,7 +84,7 @@ def test_automatic_network_is_one_way_and_github_read_only(repo_root):
     ]
 
 
-def test_acceptance_evidence_is_fail_closed_until_paid_ab_and_canary(
+def test_acceptance_evidence_is_fail_closed_until_core_and_canary(
     repo_root, tmp_path
 ):
     foundation = {
@@ -106,16 +106,17 @@ def test_acceptance_evidence_is_fail_closed_until_paid_ab_and_canary(
     assert evidence["OFFLINE_CODEX_CONTENT"] == "PASS"
     assert evidence["FOUNDATION_SYNTHETIC"] == "PASS"
     assert evidence["STATIC_TOKEN_ACCEPTANCE"] == "PASS"
-    assert evidence["MATCHED_AB"] == "NOT_RUN"
+    assert evidence["MATCHED_AB"] == "NOT_REQUIRED"
+    assert evidence["CORE_BEHAVIOR"] == "NOT_RUN"
     assert evidence["CODEX_CANARY"] == "NOT_RUN"
     assert evidence["FULL_RELEASE_CODEX"] == "NOT_PASS"
     assert evidence["PROGRAM_RELEASE"] == "0/3"
     assert evidence["release_permissions"]["stable_release"] == "BLOCKED"
     assert evidence["release_permissions"]["paid_matched_ab"] == (
-        "APPROVED_EXACTLY_FOUR_NOT_RUN"
+        "NOT_REQUIRED_HISTORICAL_BENCHMARK"
     )
     assert evidence["release_permissions"]["hub_canary"] == (
-        "APPROVED_NOT_RUN"
+        "NOT_RUN_NO_AUTHORIZATION_INFERRED"
     )
     assert evidence["evidence_body_sha256"] == evidence_body_sha256(
         evidence

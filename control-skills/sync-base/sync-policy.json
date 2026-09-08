@@ -23,10 +23,16 @@
       "CODEX_OFFLINE_INTEGRATION",
       "CODEX_TESTS",
       "CANDIDATE_OFFLINE",
-      "MATCHED_AB",
+      "CORE_BEHAVIOR",
       "CODEX_CANARY",
       "FULL_RELEASE_CODEX"
     ],
-    "program_release": "1/3"
+    "program_release": "1/3",
+    "required_protocol": "professional-core-v1",
+    "required_contract": {
+      "id": "k7-professional-core-v1",
+      "sha256": "028ba6363bff000b4aa8551ca27a66a69631cb29dacdc5319a4ce0b696b3a184",
+      "suite_sha256": "62b45686075d01277f9c924ca245f105dc5c54ba385f74084b7bdd379218d49c"
+    }
   }
 }

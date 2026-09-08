@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 from typing import Any
 
 from .acceptance import evidence_body_sha256
 from .canary import EXPECTED_PHASES
+from .core_acceptance import (
+    ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON,
+    package_client, package_discovery, package_foundation_sha256, validate_core_behavior,
+    validate_current_wire_keys,
+)
 from .matched_ab import (
     DISABLED_TOOL_FEATURES,
     INHERITABLE_PACKAGE_CHANGES,
@@ -224,7 +230,11 @@ def _validate_matched(
 def _validate_canary(
     canary: dict[str, Any],
     binding: dict[str, Any],
+    package_path: Path | None = None,
 ) -> None:
+    if not isinstance(canary, dict):
+        raise ValueError("Codex canary evidence is missing")
+    expected_discovery = package_discovery(package_path, binding) if package_path else {"agents": 16, "skills": 41}
     valid = (
         canary.get("schema_version") == 1
         and canary.get("target") == "codex"
@@ -233,7 +243,9 @@ def _validate_canary(
         and canary.get("CODEX_CANARY") == "PASS"
         and canary.get("model_requests") == 0
         and canary.get("phases") == EXPECTED_PHASES
-        and canary.get("discovery") == {"agents": 16, "skills": 41}
+        and canary.get("discovery") == expected_discovery
+        and (package_path is None or (canary.get("client") == package_client(package_path)
+                                     and canary.get("canary_protocol") == "package-bound-v1"))
         and isinstance(canary.get("rollback"), dict)
         and canary["rollback"].get("byte_identical") is True
         and canary.get("credentials_included") is False
@@ -242,48 +254,75 @@ def _validate_canary(
     )
     if not valid:
         raise ValueError("Codex canary evidence is invalid or unbound")
+    if package_path is not None:
+        rollback = canary["rollback"]
+        before = rollback.get("before_surface_sha256")
+        preserved = canary.get("preserved_files")
+        if (not isinstance(before, str) or len(before) != 64 or any(c not in "0123456789abcdef" for c in before)
+            or before != rollback.get("after_surface_sha256")
+            or not isinstance(preserved, int) or isinstance(preserved, bool) or preserved < 7
+            or canary.get("foundation_sha256") != package_foundation_sha256(package_path, binding)):
+            raise ValueError("Codex canary rollback or Foundation binding differs")
+
+
+def validate_historical_inputs(*, candidate: dict, matched_ab: dict, canary: dict) -> dict:
+    """Read-only validation of the original experiment. Never promotion authority."""
+    binding = _validate_candidate(candidate)
+    _validate_matched(matched_ab, binding)
+    _validate_canary(canary, binding)
+    return {"HISTORICAL_INPUTS": "PASS", "release_eligible": False}
 
 
 def compose_final_evidence(
     *,
     candidate: dict[str, Any],
-    matched_ab: dict[str, Any],
     canary: dict[str, Any],
+    core_behavior: dict[str, Any] | None = None,
+    package_path: Path | None = None,
+    artifact_root: Path | None = None,
     legacy_sync_bootstrap: bool = False,
 ) -> dict[str, Any]:
-    """Compose fail-closed pre-publication FULL evidence from three inputs."""
+    """Compose current evidence; historical A/B remains a separate benchmark."""
 
     binding = _validate_candidate(candidate)
-    _validate_matched(matched_ab, binding)
-    _validate_canary(canary, binding)
+    if "core_behavior" in candidate:
+        raise ValueError("obsolete core_behavior wire key collides with the PowerShell verdict key")
+    if package_path is None or artifact_root is None:
+        raise ValueError("core behavior evidence requires package and artifact paths")
+    validate_core_behavior(core_behavior, binding, package_path=package_path, artifact_root=artifact_root)
+    _validate_canary(canary, binding, package_path)
     final = dict(candidate)
     final.pop("evidence_body_sha256", None)
+    final.pop("matched_ab_metrics", None)
+    final.pop("matched_ab_benchmark", None)
     release_integrity = "PASS" if legacy_sync_bootstrap else "PENDING_PUBLICATION"
     final.update(
         {
-            "MATCHED_AB": "PASS",
+            "acceptance_protocol": ACCEPTANCE_PROTOCOL,
+            "MATCHED_AB": "NOT_REQUIRED",
+            "matched_ab_not_required_reason": MATCHED_AB_NOT_REQUIRED_REASON,
             "CODEX_CANARY": "PASS",
+            "canary_evidence": canary,
+            "CORE_BEHAVIOR": "PASS",
+            "core_behavior_evidence": core_behavior,
             "FULL_RELEASE_CODEX": "PASS",
             "PROGRAM_RELEASE": "1/3",
             "RELEASE_INTEGRITY": release_integrity,
-            "matched_ab_metrics": matched_ab["metrics"],
-            # Бенчмарк переносится в финальное evidence: по нему видно, на
-            # какой контрольной поверхности получен платный результат.
-            "matched_ab_benchmark": matched_ab["benchmark"],
             "evidence_sources": {
                 "candidate_offline": _source_record(candidate),
-                "matched_ab": _source_record(matched_ab),
                 "canary": _source_record(canary),
+                "core_behavior_evidence": _source_record(core_behavior),
             },
             "release_permissions": {
-                "paid_matched_ab": "COMPLETED_AUTHORIZED_FOUR",
+                "paid_matched_ab": "NOT_REQUIRED_HISTORICAL_BENCHMARK",
                 "hub_canary": "PASS",
-                "stable_release": "AUTHORIZED_AFTER_SAME_BYTES_PROMOTION",
+                "stable_release": "REQUIRES_SEPARATE_OWNER_AUTHORIZATION",
             },
             "limitations": [
                 "Release integrity is pending immutable publication and GitHub attestation verification.",
                 "package-acceptance.json must be created only from post-publication release-verification.json.",
-                "No A/B repeat or matrix expansion is authorized.",
+                "Historical matched A/B is neither required nor claimed as PASS by this protocol.",
+                "Core evidence establishes conformance coverage, not reliability or execution authenticity.",
             ],
         }
     )
@@ -292,4 +331,5 @@ def compose_final_evidence(
             LEGACY_SYNC_BOOTSTRAP_CONTRACT
         )
     final["evidence_body_sha256"] = evidence_body_sha256(final)
+    validate_current_wire_keys(final)
     return final

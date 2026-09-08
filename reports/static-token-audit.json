@@ -1,7 +1,7 @@
 {
   "candidate": {
     "cold_payload_in_startup": false,
-    "estimated_tokens": 4850,
+    "estimated_tokens": 7201,
     "surfaces": {
       "agents_discovery": {
         "bytes": 3174,
@@ -10,9 +10,9 @@
         "sha256": "2b65f302b757e6cb5e2884971edb1afbb043b69b60b6697ef0462c12687f1117"
       },
       "hot": {
-        "bytes": 4479,
+        "bytes": 11532,
         "logical_path": "~/.codex/AGENTS.md",
-        "sha256": "488245274b1461133d3f9ce52f6045f44d986ead69ade7973d9b716afa56fd6a"
+        "sha256": "12d80d0037dcdf1f0020b69e265bb7f4cc887ed58595ce2e7709d98d4dc52ce2"
       },
       "skills_discovery": {
         "bytes": 6896,
@@ -23,7 +23,7 @@
         "sha256": "2ca4d1af9a6fb64a8ca98217a2b19e24fbbd26b63c4d8d0a2d33720c7ce93056"
       }
     },
-    "total_bytes": 14549
+    "total_bytes": 21602
   },
   "legacy": {
     "captured_at": "2026-07-26",
@@ -54,13 +54,13 @@
   },
   "limitations": [
     "Static tokens are a conservative UTF-8 byte estimate, not provider billing.",
-    "One four-call Terra matched A/B is owner-authorized; repeat or expansion requires new approval."
+    "This static report neither authorizes a model run nor proves behavioral quality; prior evidence must match the current candidate bytes."
   ],
   "method": "UTF-8 bytes for global AGENTS.md plus canonical name|description|installed-path discovery rows; token estimate is ceil(bytes/3)",
   "results": {
     "MATCHED_AB": "NOT_RUN",
     "STATIC_TOKEN_ACCEPTANCE": "PASS",
-    "base_controlled_startup_reduction": 0.7981464267380718
+    "base_controlled_startup_reduction": 0.7002927424837326
   },
   "schema_version": 1,
   "thresholds": {

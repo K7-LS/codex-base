@@ -10,6 +10,9 @@ from pathlib import Path
 
 import pytest
 
+from codex_base.core_acceptance import contract_reference, contract_bytes, ACCEPTANCE_PROTOCOL
+from codex_base.acceptance import evidence_body_sha256
+
 
 POWERSHELLS = [
     value
@@ -103,6 +106,7 @@ def _write_verified_release_fixture(
                 "supported_version": client_version,
             },
             "foundation_engine_version": foundation_version,
+            "core_behavior_contract": contract_reference(),
             "files": package_files,
         }
     )
@@ -112,6 +116,7 @@ def _write_verified_release_fixture(
         asset_path, "w", compression=zipfile.ZIP_DEFLATED
     ) as archive:
         archive.writestr("package-manifest.json", package_manifest)
+        archive.writestr(".codex/base/core-eval-contract.json", contract_bytes())
         archive.writestr(
             ".codex/base/components.lock.json",
             lock,
@@ -133,6 +138,7 @@ def _write_verified_release_fixture(
         "transformation": "codex-native-independent-v2",
     }
     binding = {
+        "core_behavior_contract": contract_reference(),
         "target": "codex",
         "version": version,
         "tag": tag,
@@ -157,13 +163,15 @@ def _write_verified_release_fixture(
                 "CODEX_OFFLINE_INTEGRATION",
                 "CODEX_TESTS",
                 "CANDIDATE_OFFLINE",
-                "MATCHED_AB",
+                "CORE_BEHAVIOR",
                 "CODEX_CANARY",
                 "FULL_RELEASE_CODEX",
                 "RELEASE_INTEGRITY",
             )
         },
         "PROGRAM_RELEASE": "1/3",
+        "acceptance_protocol": ACCEPTANCE_PROTOCOL,
+        "MATCHED_AB": "NOT_REQUIRED",
         "release_binding": binding,
     }
     evidence["RELEASE_INTEGRITY"] = release_integrity
@@ -264,11 +272,13 @@ def test_sync_powershell_runtime_is_target_neutral_and_policy_driven(
                 "CODEX_OFFLINE_INTEGRATION",
                 "CODEX_TESTS",
                 "CANDIDATE_OFFLINE",
-                "MATCHED_AB",
+                "CORE_BEHAVIOR",
                 "CODEX_CANARY",
                 "FULL_RELEASE_CODEX",
             ],
             "program_release": "1/3",
+            "required_protocol": ACCEPTANCE_PROTOCOL,
+            "required_contract": contract_reference(),
         },
     }
     source = script.read_text(encoding="utf-8").lower()
@@ -636,6 +646,12 @@ def test_sync_powershell_accepts_prepublication_evidence_after_gh_verification(
     [
         ("gate", "acceptance evidence is not pass: codex_canary"),
         ("binding", "acceptance evidence binding differs: version"),
+        ("core_gate", "acceptance evidence is not pass: core_behavior"),
+        ("missing_protocol", "acceptance evidence current protocol differs"),
+        ("wrong_protocol", "acceptance evidence current protocol differs"),
+        ("fake_historical_pass", "acceptance evidence current protocol differs"),
+        ("missing_contract", "acceptance evidence core contract differs"),
+        ("wrong_contract", "acceptance evidence core contract differs"),
     ],
 )
 def test_sync_powershell_rejects_failed_gate_or_cross_bound_evidence(
@@ -653,11 +669,17 @@ def test_sync_powershell_rejects_failed_gate_or_cross_bound_evidence(
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
     if mutation == "gate":
         evidence["CODEX_CANARY"] = "NOT_RUN"
-    else:
+    elif mutation == "binding":
         evidence["release_binding"]["version"] = "9.9.9"
+    elif mutation == "core_gate": evidence["CORE_BEHAVIOR"] = "NOT_RUN"
+    elif mutation == "missing_protocol": evidence.pop("acceptance_protocol")
+    elif mutation == "wrong_protocol": evidence["acceptance_protocol"] = "legacy"
+    elif mutation == "fake_historical_pass": evidence["MATCHED_AB"] = "PASS"
     evidence_bytes = _json_bytes(evidence)
     evidence_path.write_bytes(evidence_bytes)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if mutation == "missing_contract": manifest.pop("core_behavior_contract")
+    elif mutation == "wrong_contract": manifest["core_behavior_contract"]["sha256"] = "0" * 64
     manifest["acceptance_evidence_sha256"] = _sha256_bytes(
         evidence_bytes
     )
@@ -690,6 +712,123 @@ def test_sync_powershell_rejects_failed_gate_or_cross_bound_evidence(
     assert expected_error in (
         result.stdout + result.stderr
     ).lower()
+
+
+@pytest.mark.parametrize("executable", POWERSHELLS)
+def test_old_installed_policy_cannot_bootstrap_current_protocol(repo_root, executable, tmp_path):
+    release_dir, tag = _write_verified_release_fixture(tmp_path / "release")
+    historical = []
+    for relative in ("control-skills/sync-base/tools/sync_base.ps1", "control-skills/sync-base/sync-policy.json"):
+        result = subprocess.run(["git", "show", f"HEAD:{relative}"], cwd=repo_root, capture_output=True, check=True)
+        target = tmp_path / Path(relative).name
+        target.write_bytes(result.stdout)
+        historical.append(target)
+    policy = json.loads(historical[1].read_bytes())
+    if "MATCHED_AB" not in policy["evidence"]["required_verdicts"]:
+        pytest.skip("HEAD already contains the new consumer protocol; historical rollout needs a saved old checkout")
+    result = _run_library_probe(executable, historical[0], historical[1],
+                                f"Assert-LlmReleaseFiles -Directory '{release_dir}' -Tag '{tag}'")
+    assert result.returncode != 0
+    assert "acceptance evidence is not pass: matched_ab" in (result.stdout + result.stderr).lower()
+
+
+def _mutate_release_for_embedded_core_guard(release_dir: Path, mutation: str) -> None:
+    """Create real corrupt ZIP bytes while keeping earlier outer gates valid.
+
+    These are synthetic unit fixtures, not signed assets or model evidence.
+    The stale-evidence case intentionally leaves only that outer digest stale.
+    """
+    manifest_path = release_dir / "release-manifest.json"
+    evidence_path = release_dir / "acceptance-evidence.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    evidence = json.loads(evidence_path.read_bytes())
+    if mutation == "stale_evidence_hash":
+        evidence["synthetic_mutation"] = "changed final evidence bytes"
+    else:
+        asset_path = release_dir / manifest["asset"]["name"]
+        with zipfile.ZipFile(asset_path) as archive:
+            entries = [(entry.filename, archive.read(entry)) for entry in archive.infolist()]
+        contract_path = ".codex/base/core-eval-contract.json"
+        if mutation == "missing_contract_entry":
+            entries = [(name, payload) for name, payload in entries if name != contract_path]
+        elif mutation == "tampered_contract_entry":
+            # Still valid JSON with the same parsed values; byte identity must fail.
+            entries = [(name, payload + b"\n" if name == contract_path else payload) for name, payload in entries]
+        elif mutation == "duplicate_contract_entry":
+            entries.append(next(row for row in entries if row[0] == contract_path))
+        else:
+            package = json.loads(next(payload for name, payload in entries if name == "package-manifest.json"))
+            if mutation == "missing_package_contract":
+                del package["core_behavior_contract"]
+            elif mutation == "changed_package_contract":
+                package["core_behavior_contract"]["sha256"] = "0" * 64
+            else:
+                raise AssertionError(f"unknown mutation: {mutation}")
+            entries = [(name, _json_bytes(package) if name == "package-manifest.json" else payload) for name, payload in entries]
+
+        def write_zip() -> None:
+            with zipfile.ZipFile(asset_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for name, payload in entries:
+                    archive.writestr(name, payload)
+
+        if mutation == "duplicate_contract_entry":
+            with pytest.warns(UserWarning, match="Duplicate name"):
+                write_zip()
+        else:
+            write_zip()
+        manifest["asset"].update(sha256=_sha256_bytes(asset_path.read_bytes()), bytes=asset_path.stat().st_size)
+        package_payload = next(payload for name, payload in entries if name == "package-manifest.json")
+        manifest["package_manifest_sha256"] = _sha256_bytes(package_payload)
+        # Rebind every declared field, not only the ZIP digest, so rejection
+        # must come from the embedded-contract guard rather than an outer gate.
+        evidence["release_binding"] = {key: manifest[key] for key in evidence["release_binding"]}
+    evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
+    evidence_bytes = _json_bytes(evidence)
+    evidence_path.write_bytes(evidence_bytes)
+    if mutation != "stale_evidence_hash":
+        manifest["acceptance_evidence_sha256"] = _sha256_bytes(evidence_bytes)
+    manifest_path.write_bytes(_json_bytes(manifest))
+
+
+@pytest.mark.parametrize("executable", POWERSHELLS)
+@pytest.mark.parametrize(("mutation", "expected_error"), [
+    ("missing_contract_entry", "ZIP entry is missing or duplicated: .codex/base/core-eval-contract.json"),
+    ("tampered_contract_entry", "Embedded core contract SHA-256 differs."),
+    ("duplicate_contract_entry", "ZIP entry is missing or duplicated: .codex/base/core-eval-contract.json"),
+    ("missing_package_contract", "Embedded core contract differs."),
+    ("changed_package_contract", "Embedded core contract differs."),
+    ("stale_evidence_hash", "Acceptance evidence asset SHA-256 differs."),
+])
+def test_sync_powershell_rejects_embedded_core_mutants_after_outer_rebinding(
+    repo_root, executable, tmp_path, mutation, expected_error,
+):
+    release_dir, tag = _write_verified_release_fixture(tmp_path / "release")
+    _mutate_release_for_embedded_core_guard(release_dir, mutation)
+    manifest = json.loads((release_dir / "release-manifest.json").read_bytes())
+    evidence_bytes = (release_dir / "acceptance-evidence.json").read_bytes()
+    evidence = json.loads(evidence_bytes)
+    asset_path = release_dir / manifest["asset"]["name"]
+    assert manifest["asset"]["sha256"] == _sha256_bytes(asset_path.read_bytes())
+    assert manifest["asset"]["bytes"] == asset_path.stat().st_size
+    with zipfile.ZipFile(asset_path) as archive:
+        assert manifest["package_manifest_sha256"] == _sha256_bytes(archive.read("package-manifest.json"))
+    assert evidence["release_binding"] == {key: manifest[key] for key in evidence["release_binding"]}
+    assert evidence["evidence_body_sha256"] == evidence_body_sha256(evidence)
+    assert (manifest["acceptance_evidence_sha256"] == _sha256_bytes(evidence_bytes)) is (mutation != "stale_evidence_hash")
+    assert evidence["CORE_BEHAVIOR"] == "PASS"
+    assert evidence["acceptance_protocol"] == ACCEPTANCE_PROTOCOL
+
+    script = repo_root / "control-skills/sync-base/tools/sync_base.ps1"
+    policy = repo_root / "control-skills/sync-base/sync-policy.json"
+    result = _run_library_probe(executable, script, policy, (
+        "try { "
+        f"$null = Assert-LlmReleaseFiles -Directory '{release_dir}' -Tag '{tag}'; "
+        "Write-Output 'UNEXPECTED_ACCEPT' "
+        "} catch { Write-Output $_.Exception.Message; exit 17 }"
+    ))
+    assert result.returncode == 17, result.stdout + result.stderr
+    assert result.stdout.strip() == expected_error
+    assert not (release_dir / "verified-foundation").exists()
 
 
 @pytest.mark.parametrize("executable", POWERSHELLS)

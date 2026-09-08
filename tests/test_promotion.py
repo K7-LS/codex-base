@@ -17,6 +17,8 @@ from codex_base.promotion import (
     promote_candidate,
 )
 from codex_base.release import bind_acceptance_evidence, build_release
+from core_evidence_support import synthetic_core, synthetic_canary, add_synthetic_contract
+from codex_base.core_acceptance import ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON
 
 
 def _json_bytes(value: object) -> bytes:
@@ -59,6 +61,7 @@ def _candidate(repo_root: Path, tmp_path: Path) -> tuple[Path, dict[str, object]
         "0.1.0",
         _foundation(tmp_path / "foundation"),
     )
+    add_synthetic_contract(built)
     candidate = tmp_path / "candidate"
     candidate.mkdir()
     for path in (
@@ -102,6 +105,9 @@ def _final_evidence(
             "PASS" if legacy_sync_bootstrap else "PENDING_PUBLICATION"
         ),
         "PROGRAM_RELEASE": "1/3",
+        "acceptance_protocol": ACCEPTANCE_PROTOCOL,
+        "MATCHED_AB": "NOT_REQUIRED",
+        "matched_ab_not_required_reason": MATCHED_AB_NOT_REQUIRED_REASON,
     }
     if legacy_sync_bootstrap:
         evidence["release_integrity_contract"] = {
@@ -113,6 +119,10 @@ def _final_evidence(
                 "gh attestation verify",
             ],
         }
+    evidence["core_behavior_evidence"] = synthetic_core(
+        binding, path.parent / "candidate" / binding["asset"]["name"], path.parent
+    )
+    evidence["canary_evidence"] = synthetic_canary(binding, path.parent / "candidate" / binding["asset"]["name"])
     if failed_gate:
         evidence[failed_gate] = "NOT_PASS"
     evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
@@ -309,7 +319,7 @@ def test_codex_package_acceptance_rejects_wrong_evidence_identity(
 
 @pytest.mark.parametrize(
     "gate",
-    ["MATCHED_AB", "CODEX_CANARY", "FULL_RELEASE_CODEX"],
+    ["CORE_BEHAVIOR", "CODEX_CANARY", "FULL_RELEASE_CODEX"],
 )
 def test_promotion_fails_closed_when_required_gate_is_missing_or_not_pass(
     repo_root, tmp_path, gate
@@ -325,3 +335,21 @@ def test_promotion_fails_closed_when_required_gate_is_missing_or_not_pass(
         promote_candidate(candidate, final, tmp_path / "stable")
 
     assert not (tmp_path / "stable").exists()
+
+
+def test_package_acceptance_rechecks_core_after_promotion(repo_root, tmp_path):
+    candidate, binding = _candidate(repo_root, tmp_path)
+    final = _final_evidence(tmp_path / "final-evidence.json", binding)
+    stable = promote_candidate(candidate, final, tmp_path / "stable")
+    verification = _release_verification(tmp_path / "verification.json", stable.manifest_path)
+    evidence = json.loads(stable.evidence_path.read_bytes())
+    evidence.pop("core_behavior_evidence")
+    evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
+    stable.evidence_path.write_bytes(_json_bytes(evidence))
+    manifest = json.loads(stable.manifest_path.read_bytes())
+    manifest["acceptance_evidence_sha256"] = hashlib.sha256(stable.evidence_path.read_bytes()).hexdigest()
+    stable.manifest_path.write_bytes(_json_bytes(manifest))
+    with pytest.raises(ValueError, match="core behavior"):
+        create_package_acceptance(stable.manifest_path, stable.evidence_path, verification,
+                                  tmp_path / "must-not-exist.json")
+    assert not (tmp_path / "must-not-exist.json").exists()

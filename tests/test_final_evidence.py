@@ -3,17 +3,22 @@ from __future__ import annotations
 import copy
 
 import hashlib
+import json
+import shutil
+import subprocess
 
 import pytest
 
 from codex_base.acceptance import evidence_body_sha256
+from core_evidence_support import minimal_package, core_arguments
 from codex_base.canary import build_canary_evidence
-from codex_base.final_evidence import _validate_matched, compose_final_evidence
+from codex_base.final_evidence import _validate_matched, compose_final_evidence, validate_historical_inputs
+from codex_base.core_acceptance import package_discovery, package_foundation_sha256
 from codex_base.matched_ab import LEGACY_SURFACE_SHA256, summarize_results
 
 
-def _binding() -> dict[str, object]:
-    return {
+def _binding(tmp_path) -> dict[str, object]:
+    binding = {
         "target": "codex",
         "version": "0.1.1",
         "tag": "codex-v0.1.1",
@@ -33,6 +38,8 @@ def _binding() -> dict[str, object]:
         "foundation_engine_version": "0.2.1",
         "foundation_engine_manifest_sha256": "f" * 64,
     }
+    minimal_package(tmp_path, binding)
+    return binding
 
 
 def _candidate(binding: dict[str, object]) -> dict[str, object]:
@@ -124,11 +131,11 @@ def _inherited_matched(binding: dict[str, object]) -> dict[str, object]:
     return evidence
 
 
-def _canary(binding: dict[str, object]) -> dict[str, object]:
+def _canary(binding: dict[str, object], package_path=None) -> dict[str, object]:
     return build_canary_evidence(
         release_binding=binding,
         client_version="0.146.0-alpha.3.1",
-        foundation_sha256="3" * 64,
+        foundation_sha256=package_foundation_sha256(package_path, binding) if package_path else "3" * 64,
         before_surface_sha256="4" * 64,
         after_rollback_surface_sha256="4" * 64,
         phase_statuses={
@@ -138,142 +145,139 @@ def _canary(binding: dict[str, object]) -> dict[str, object]:
             "inventory": "INVENTORIED",
             "rollback": "ROLLED_BACK",
         },
-        discovery={"agents": 16, "skills": 41},
+        discovery=package_discovery(package_path, binding) if package_path else {"agents": 16, "skills": 41},
+        package_path=package_path,
         preserved_files=8,
     )
 
 
-def test_final_evidence_is_composed_only_from_bound_pass_evidence():
-    binding = _binding()
-    final = compose_final_evidence(
-        candidate=_candidate(binding),
-        matched_ab=_matched(binding),
-        canary=_canary(binding),
-    )
-
+@pytest.mark.parametrize("legacy", [False, True])
+def test_current_composition_needs_no_historical_model_call(tmp_path, legacy):
+    binding = _binding(tmp_path)
+    args = core_arguments(binding, tmp_path)
+    final = compose_final_evidence(candidate=_candidate(binding),
+                                   canary=_canary(binding, args["package_path"]),
+                                   legacy_sync_bootstrap=legacy, **args)
     assert final["FULL_RELEASE_CODEX"] == "PASS"
-    assert final["PROGRAM_RELEASE"] == "1/3"
-    assert final["RELEASE_INTEGRITY"] == "PENDING_PUBLICATION"
-    assert final["MATCHED_AB"] == "PASS"
-    assert final["CODEX_CANARY"] == "PASS"
-    assert (
-        final["evidence_body_sha256"] == evidence_body_sha256(final)
-    )
-    assert set(final["evidence_sources"]) == {
-        "candidate_offline",
-        "matched_ab",
-        "canary",
-    }
-
-
-def test_legacy_sync_bootstrap_declares_consumer_verified_integrity_contract():
-    binding = _binding()
-
-    final = compose_final_evidence(
-        candidate=_candidate(binding),
-        matched_ab=_matched(binding),
-        canary=_canary(binding),
-        legacy_sync_bootstrap=True,
-    )
-
-    assert final["RELEASE_INTEGRITY"] == "PASS"
-    assert final["release_integrity_contract"] == {
-        "mode": "CONSUMER_VERIFIED_BEFORE_EVIDENCE",
-        "legacy_updater": "codex-v0.1.1",
-        "required_checks": [
-            "gh release verify",
-            "gh release verify-asset",
-            "gh attestation verify",
-        ],
-    }
+    assert final["CORE_BEHAVIOR"] == "PASS"
+    assert final["MATCHED_AB"] == "NOT_REQUIRED"
+    assert final["acceptance_protocol"] == "professional-core-v1"
+    assert "matched_ab" not in final["evidence_sources"]
+    assert "matched_ab_metrics" not in final
+    assert final["RELEASE_INTEGRITY"] == ("PASS" if legacy else "PENDING_PUBLICATION")
     assert final["evidence_body_sha256"] == evidence_body_sha256(final)
 
 
-def test_final_evidence_accepts_zero_call_inheritance_for_equal_model_surface():
-    binding = _binding()
-    matched = _inherited_matched(binding)
-
-    final = compose_final_evidence(
-        candidate=_candidate(binding),
-        matched_ab=matched,
-        canary=_canary(binding),
-    )
-
-    assert final["MATCHED_AB"] == "PASS"
-    assert matched["calls_completed"] == 0
-    assert matched["inherited_calls"] == 4
-    assert final["matched_ab_metrics"] == matched["metrics"]
-
-
-def test_final_evidence_rejects_inheritance_with_changed_model_surface():
-    binding = _binding()
-    matched = _inherited_matched(binding)
-    matched["inheritance"]["candidate_model_surface_sha256"] = "6" * 64
-    matched["evidence_body_sha256"] = evidence_body_sha256(matched)
-
-    with pytest.raises(ValueError, match="matched A/B evidence"):
-        compose_final_evidence(
-            candidate=_candidate(binding),
-            matched_ab=matched,
-            canary=_canary(binding),
-        )
+@pytest.mark.parametrize("shell", ["pwsh", "powershell"])
+def test_real_composition_round_trips_windows_json_without_case_collision(tmp_path, shell):
+    executable = shutil.which(shell)
+    if executable is None:
+        pytest.skip(f"{shell} unavailable")
+    binding = _binding(tmp_path)
+    args = core_arguments(binding, tmp_path)
+    final = compose_final_evidence(candidate=_candidate(binding),
+                                  canary=_canary(binding, args["package_path"]), **args)
+    path = tmp_path / "composed.json"
+    path.write_text(json.dumps(final, ensure_ascii=False), encoding="utf-8")
+    script = tmp_path / "read.ps1"
+    script.write_text("param([string]$Path)\n$ErrorActionPreference='Stop'\n"
+                      "$value=Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json\n"
+                      "if ($value.CORE_BEHAVIOR -cne 'PASS') { throw 'verdict lost' }\n"
+                      "if ($value.core_behavior_evidence.kind -cne 'core_behavior_evidence') { throw 'nested evidence lost' }\n"
+                      "if ($value.core_behavior_evidence.runs.Count -ne 15) { throw 'runs lost' }\n"
+                      "$value.acceptance_protocol\n", encoding="utf-8-sig")
+    result = subprocess.run([executable, "-NoProfile", "-NonInteractive", "-File", str(script), str(path)],
+                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "professional-core-v1"
 
 
-def test_final_evidence_rejects_missing_inherited_model_surface_digest():
-    binding = _binding()
-    matched = _inherited_matched(binding)
-    matched["inheritance"]["previous_model_surface_sha256"] = ""
-    matched["inheritance"]["candidate_model_surface_sha256"] = ""
-    matched["evidence_body_sha256"] = evidence_body_sha256(matched)
-
-    with pytest.raises(ValueError, match="matched A/B evidence"):
-        compose_final_evidence(
-            candidate=_candidate(binding),
-            matched_ab=matched,
-            canary=_canary(binding),
-        )
+@pytest.mark.parametrize("legacy", [False, True])
+def test_current_composition_cannot_use_legacy_flag_to_skip_core(tmp_path, legacy):
+    binding = _binding(tmp_path)
+    with pytest.raises(ValueError, match="core behavior"):
+        compose_final_evidence(candidate=_candidate(binding), canary=_canary(binding), legacy_sync_bootstrap=legacy)
 
 
-@pytest.mark.parametrize("tamper", ["candidate", "matched", "canary"])
-def test_final_evidence_rejects_tampered_or_unbound_inputs(tamper: str):
-    binding = _binding()
+def test_current_composition_rejects_obsolete_case_colliding_wire_key(tmp_path):
+    binding = _binding(tmp_path)
+    args = core_arguments(binding, tmp_path)
     candidate = _candidate(binding)
-    matched = _matched(binding)
-    canary = _canary(binding)
-    if tamper == "candidate":
-        candidate["CANDIDATE_OFFLINE"] = "NOT_PASS"
+    candidate["core_behavior"] = {"obsolete": True}
+    candidate["evidence_body_sha256"] = evidence_body_sha256(candidate)
+    with pytest.raises(ValueError, match="wire key collides"):
+        compose_final_evidence(candidate=candidate, canary=_canary(binding, args["package_path"]), **args)
+
+
+@pytest.mark.parametrize("alias", ["Core_Behavior", "CORE_BEHAVIOR_EVIDENCE", "EVIDENCE_BODY_SHA256", "nested"])
+def test_composition_rejects_case_collisions_at_any_envelope_depth(tmp_path, alias):
+    binding = _binding(tmp_path)
+    args = core_arguments(binding, tmp_path)
+    candidate = _candidate(binding)
+    candidate[alias] = {"scope": 1, "Scope": 2} if alias == "nested" else {}
+    candidate["evidence_body_sha256"] = evidence_body_sha256(candidate)
+    with pytest.raises(ValueError, match="case-insensitive duplicate"):
+        compose_final_evidence(candidate=candidate, canary=_canary(binding, args["package_path"]), **args)
+
+
+@pytest.mark.parametrize("inherited", [False, True])
+def test_historical_direct_and_inherited_inputs_remain_readable_not_promotable(tmp_path, inherited):
+    binding = _binding(tmp_path)
+    matched = _inherited_matched(binding) if inherited else _matched(binding)
+    verdict = validate_historical_inputs(candidate=_candidate(binding), matched_ab=matched, canary=_canary(binding))
+    assert verdict == {"HISTORICAL_INPUTS": "PASS", "release_eligible": False}
+    assert "FULL_RELEASE_CODEX" not in verdict
+
+
+@pytest.mark.parametrize("tamper", ["candidate", "matched", "canary", "changed_inheritance", "missing_inheritance"])
+def test_historical_validation_preserves_original_checks(tmp_path, tamper):
+    binding = _binding(tmp_path)
+    candidate, matched, canary = _candidate(binding), _matched(binding), _canary(binding)
+    if tamper == "candidate": candidate["CANDIDATE_OFFLINE"] = "NOT_PASS"
     elif tamper == "matched":
         matched["candidate_package"]["sha256"] = "9" * 64
         matched["evidence_body_sha256"] = evidence_body_sha256(matched)
-    else:
+    elif tamper == "canary":
         canary["release_binding"] = {**binding, "version": "9.9.9"}
         canary["evidence_body_sha256"] = evidence_body_sha256(canary)
+    else:
+        matched = _inherited_matched(binding)
+        matched["inheritance"]["candidate_model_surface_sha256"] = "6" * 64 if tamper == "changed_inheritance" else ""
+        if tamper == "missing_inheritance": matched["inheritance"]["previous_model_surface_sha256"] = ""
+        matched["evidence_body_sha256"] = evidence_body_sha256(matched)
+    with pytest.raises(ValueError):
+        validate_historical_inputs(candidate=candidate, matched_ab=matched, canary=canary)
 
-    with pytest.raises(ValueError, match="evidence"):
-        compose_final_evidence(
-            candidate=candidate,
-            matched_ab=matched,
-            canary=canary,
-        )
 
-
-def test_final_evidence_is_fail_closed_on_tampered_matched_benchmark(tmp_path):
-    # Найденный Codex fail-open: сборка возвращала FULL_RELEASE_CODEX=PASS
-    # после удаления surfaces и подмены benchmark. Теперь оба случая — отказ.
-    binding = _binding()
+@pytest.mark.parametrize("tamper", ["surfaces", "benchmark", "digest"])
+def test_historical_matched_benchmark_is_still_fail_closed(tmp_path, tamper):
+    binding = _binding(tmp_path)
     matched = _matched(binding)
-
-    stripped = copy.deepcopy(matched)
-    del stripped["surfaces"]
+    if tamper == "surfaces": del matched["surfaces"]
+    elif tamper == "benchmark": matched["benchmark"] = {"id": "invented", "mode": "DIRECT_NEW_BASELINE"}
+    else: matched["surfaces"]["legacy_sha256"] = "d" * 64
+    matched["evidence_body_sha256"] = evidence_body_sha256(matched)
     with pytest.raises(ValueError):
-        _validate_matched(stripped, binding)
+        _validate_matched(matched, binding)
 
-    forged = copy.deepcopy(matched)
-    forged["benchmark"] = {"id": "самодельный", "mode": "DIRECT_NEW_BASELINE"}
-    with pytest.raises(ValueError):
-        _validate_matched(forged, binding)
 
-    drifted = copy.deepcopy(matched)
-    drifted["surfaces"]["legacy_sha256"] = "d" * 64
-    with pytest.raises(ValueError):
-        _validate_matched(drifted, binding)
+def test_current_composition_requires_package_bound_canary(tmp_path):
+    binding = _binding(tmp_path)
+    with pytest.raises(ValueError, match="canary"):
+        compose_final_evidence(candidate=_candidate(binding), canary=_canary(binding), **core_arguments(binding, tmp_path))
+
+
+@pytest.mark.parametrize("tamper", ["missing_before", "missing_after", "unequal", "missing_foundation", "wrong_foundation", "missing_preserved"])
+def test_current_canary_does_not_trust_self_hashed_rollback_pass(tmp_path, tamper):
+    binding = _binding(tmp_path)
+    args = core_arguments(binding, tmp_path)
+    canary = _canary(binding, args["package_path"])
+    if tamper == "missing_before": del canary["rollback"]["before_surface_sha256"]
+    elif tamper == "missing_after": del canary["rollback"]["after_surface_sha256"]
+    elif tamper == "unequal": canary["rollback"]["after_surface_sha256"] = "9" * 64
+    elif tamper == "missing_foundation": del canary["foundation_sha256"]
+    elif tamper == "wrong_foundation": canary["foundation_sha256"] = "9" * 64
+    else: del canary["preserved_files"]
+    canary["evidence_body_sha256"] = evidence_body_sha256(canary)
+    with pytest.raises(ValueError, match="canary"):
+        compose_final_evidence(candidate=_candidate(binding), canary=canary, **args)

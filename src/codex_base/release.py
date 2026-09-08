@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterator
 
+from .core_acceptance import PACKAGE_CONTRACT_PATH, contract_bytes, contract_reference
 from .repository_identity import (
     CANONICAL_REPOSITORY,
     CANONICAL_TRANSFORMATION,
@@ -102,14 +103,9 @@ def _build_desired_state(source_root: Path) -> dict[str, object]:
             ".codex/hooks.json",
         ],
         "inventory_roots": [".agents/skills", ".codex/agents"],
-        "mcp": ["k7-autocad-bridge", "k7-revit-bridge"],
-        "plugins": [
-            "documents@openai-primary-runtime",
-            "pdf@openai-primary-runtime",
-            "presentations@openai-primary-runtime",
-            "spreadsheets@openai-primary-runtime",
-            "template-creator@openai-primary-runtime",
-        ],
+        # Capabilities are discovered through skills; connections are host-owned.
+        "mcp": [],
+        "plugins": [],
         "marketplaces": [],
         "shared_tools": {
             "officecli": "1.0.143",
@@ -117,21 +113,8 @@ def _build_desired_state(source_root: Path) -> dict[str, object]:
         },
         "platform_owned": [{"kind": "mcp", "id": "node_repl"}],
         "protected_state": protected_state,
-        "retired_ids": [
-            "Revit-Connector",
-            "autocad-mcp",
-            "claude-plugins-official",
-        ],
-        "migrations": [
-            {
-                "from": "Revit-Connector",
-                "to": "k7-revit-bridge",
-            },
-            {
-                "from": "autocad-mcp",
-                "to": "k7-autocad-bridge",
-            },
-        ],
+        "retired_ids": [],
+        "migrations": [],
     }
 
 
@@ -537,6 +520,9 @@ def _build_release_from_export(
     session_tools: SessionToolsBuild,
 ) -> ReleaseBuild:
     component_lock_bytes = _json_bytes(component_lock)
+    # Historical exports remain historical. Never inject policy from the
+    # caller's dirty checkout into an archive claiming another Git identity.
+    core_contract = contract_reference(source_root) if (source_root / "evals/core/contract.json").is_file() else None
     entries: dict[str, bytes] = {
         ".codex/AGENTS.md": (source_root / "AGENTS.md").read_bytes(),
         ".codex/config.toml": (
@@ -551,6 +537,8 @@ def _build_release_from_export(
             _build_desired_state(source_root)
         ),
     }
+    if core_contract is not None:
+        entries[PACKAGE_CONTRACT_PATH] = contract_bytes(source_root)
     _add_tree(entries, source_root / "agents", ".codex/agents")
     session_tool_ids = frozenset(
         str(tool["id"])
@@ -639,6 +627,7 @@ def _build_release_from_export(
                 replace_files
                 + [
                     ".codex/AGENTS.md",
+                    *([PACKAGE_CONTRACT_PATH] if core_contract is not None else []),
                     ".codex/base/VERSION",
                     ".codex/base/components.lock.json",
                     ".codex/base/desired-state.json",
@@ -676,30 +665,15 @@ def _build_release_from_export(
             "strict_doctor": True,
             "inventory_roots": [".agents/skills", ".codex/agents"],
             "platform_owned": [],
-            "toml_reconcile": [
-                {
-                    "path": ".codex/config.toml",
-                    "exact_tables": [
-                        "mcp_servers",
-                        "plugin_marketplaces",
-                        "plugins",
-                    ],
-                    "protected_tables": ["mcp_servers.node_repl"],
-                    "allowed_entries": [
-                        "mcp_servers.k7-autocad-bridge",
-                        "mcp_servers.k7-revit-bridge",
-                        "plugins.documents@openai-primary-runtime",
-                        "plugins.pdf@openai-primary-runtime",
-                        "plugins.presentations@openai-primary-runtime",
-                        "plugins.spreadsheets@openai-primary-runtime",
-                        "plugins.template-creator@openai-primary-runtime",
-                    ],
-                }
-            ],
+            # Merge only the supplied defaults. Exact reconciliation would
+            # delete/re-enable user MCP, plugin and marketplace settings.
+            "toml_reconcile": [],
         },
         "session_tools_baseline": baseline,
         "files": package_files,
     }
+    if core_contract is not None:
+        package_manifest["core_behavior_contract"] = core_contract
     package_manifest_bytes = _json_bytes(package_manifest)
     entries["package-manifest.json"] = package_manifest_bytes
 
@@ -742,6 +716,8 @@ def _build_release_from_export(
             ],
         },
     }
+    if core_contract is not None:
+        release_manifest["core_behavior_contract"] = core_contract
     validate_session_tools_release_binding(
         release_manifest=release_manifest,
         package_manifest=package_manifest,

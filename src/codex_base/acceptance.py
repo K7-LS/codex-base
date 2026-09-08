@@ -251,6 +251,10 @@ def release_binding_from_manifest(
             f"release manifest lacks binding fields: {', '.join(missing)}"
         )
     binding = {key: manifest[key] for key in required}
+    # Keep historical binding readers compatible. Current promotion separately
+    # requires this contract; deleting it cannot downgrade the current gate.
+    if "core_behavior_contract" in manifest:
+        binding["core_behavior_contract"] = manifest["core_behavior_contract"]
     if "session_tools_asset" in manifest:
         version = manifest["version"]
         if not isinstance(version, str) or not version:
@@ -341,18 +345,21 @@ def write_acceptance_evidence(
         "CODEX_OFFLINE_INTEGRATION": integration_status,
         "CODEX_TESTS": tests_status,
         "CANDIDATE_OFFLINE": "PASS" if candidate_offline else "NOT_PASS",
-        "MATCHED_AB": "NOT_RUN",
+        "acceptance_protocol": "professional-core-v1",
+        "MATCHED_AB": "NOT_REQUIRED",
+        "CORE_BEHAVIOR": "NOT_RUN",
         "CODEX_CANARY": "NOT_RUN",
         "FULL_RELEASE_CODEX": "NOT_PASS",
         "PROGRAM_RELEASE": "0/3",
         "release_permissions": {
-            "paid_matched_ab": "APPROVED_EXACTLY_FOUR_NOT_RUN",
-            "hub_canary": "APPROVED_NOT_RUN",
+            "paid_matched_ab": "NOT_REQUIRED_HISTORICAL_BENCHMARK",
+            "hub_canary": "NOT_RUN_NO_AUTHORIZATION_INFERRED",
             "stable_release": "BLOCKED",
         },
         "limitations": [
             "Static token estimates are not provider billing measurements.",
-            "FULL_RELEASE_CODEX cannot pass without matched A/B and hub canary.",
+            "FULL_RELEASE_CODEX requires package-bound professional-core evidence and hub canary.",
+            "Core behavior remains NOT_RUN until all 15 original cases have package-bound independent review.",
             "A stable release must reuse the accepted candidate ZIP bytes.",
         ],
     }

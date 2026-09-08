@@ -4,17 +4,17 @@
   "components": [
     {
       "id": "document-quality-gate",
-      "sha256": "3c9c5aad9402c5e88b25e9bd4919262e029aae45e1b3615bd8897bb67a77fb5a",
+      "sha256": "5d57870e04fa710c1f02ba90b9669859bb63da860f2db0d8f1269a89f6a61c25",
       "files": 2
     },
     {
       "id": "facts-layer",
-      "sha256": "1db8ac9ecb1d42a272e9b7da1e7b3ab8cc2408161d1dd0774c66b6bb97a2036a",
+      "sha256": "f04308acce50a92ddb6b546e502ba1b08aec3b88bc60193bbdb3f8504b7f606d",
       "files": 2
     },
     {
       "id": "project-memory",
-      "sha256": "b7682b1d0e94eda650568b244bfac25d5b0f722b83f091b307ccd38f6008dcb7",
+      "sha256": "77783769f0d5b3ad9a8f62878d5d965ca0186840f6f6c34bbe95df7125083d36",
       "files": 13
     },
     {
