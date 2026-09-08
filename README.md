@@ -1,11 +1,11 @@
 # Codex Base
 
-Native, progressively loaded base for `codex-cli 0.146.0-alpha.3.1`.
+Native, progressively loaded base targeting `codex-cli 0.153.1`.
 
 ## Runtime shape
 
 - HOT: compact global `AGENTS.md` on every new session.
-- WARM: discovery metadata for 16 domain agents, 37 capability skills, and
+- WARM: discovery metadata for 16 domain agents, 39 capability skills, and
   one explicit control skill (`sync-base`).
 - COLD: full skill instructions, scripts, templates, 19 reference files,
   3 named chains, and 3 command references loaded only after routing.
@@ -44,10 +44,18 @@ Foundation engine inside that verified ZIP.
 The resulting candidate remains fail-closed:
 
 - `MATCHED_AB: NOT_RUN`
+- `CORE_BEHAVIOR: NOT_RUN`
 - `CODEX_CANARY: NOT_RUN`
 - `FULL_RELEASE_CODEX: NOT_PASS`
 
-The latest owner-authorized guarded GPT-5.6 Terra matched A/B started its first
+Current professional-core acceptance requires the 15 package-bound cases in
+[`evals/core/README.md`](evals/core/README.md), an independent criterion review,
+and a package-bound no-model canary. Its final evidence records
+`MATCHED_AB: NOT_REQUIRED` with the protocol's explicit reason. The client
+version must match the actual tested executable; model and reasoning remain
+user/host choices. Offline construction does not accept model behavior.
+
+The historical owner-authorized guarded GPT-5.6 Terra matched A/B started its first
 call and completed none. Hardened evidence identified `item.completed` with
 the exact-version JSONL item type redacted as unknown. The official
 `rust-v0.146.0-alpha.3.1` source schema proves the only missing enum member is
@@ -58,7 +66,7 @@ not run and `repeat_authorized=false`; another A/B attempt requires new owner
 approval. Release tooling is not packaged in the candidate ZIP, so this
 hardening does not change the already accepted asset bytes.
 
-Review the no-spend plan before the paid run:
+The historical runner's no-spend plan remains available for that separate test:
 
 ```powershell
 py -3.12 .\tools\run_matched_ab.py

@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codex_base.token_audit import audit_static_context  # noqa: E402
+from codex_base.release import SUPPORTED_CODEX_CLIENT  # noqa: E402
 
 
 def _read(name: str):
@@ -168,7 +169,7 @@ $Foundation = Get-ChildItem `
 # Прямая диагностика
 pwsh -NoProfile -File $Foundation `
   doctor -Home $env:USERPROFILE -Target codex `
-  -ClientId codex-cli -ClientVersion 0.146.0-alpha.3.1 -Json
+  -ClientId codex-cli -ClientVersion {SUPPORTED_CODEX_CLIENT} -Json
 
 # Инвентарь
 pwsh -NoProfile -File $Foundation `

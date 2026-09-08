@@ -18,9 +18,10 @@ sys.path.insert(0, str(ROOT / "src"))
 from codex_base.canary import build_canary_evidence, surface_digest  # noqa: E402
 from codex_base.promotion import _verify_candidate  # noqa: E402
 from codex_base.core_acceptance import package_client, package_foundation_sha256  # noqa: E402
+from codex_base.release import SUPPORTED_CODEX_CLIENT  # noqa: E402
 
 
-SUPPORTED_CLIENT = "0.146.0-alpha.3.1"
+SUPPORTED_CLIENT = SUPPORTED_CODEX_CLIENT
 CANARY_LOCAL_EXCEPTION = ".agents/skills/local-canary"
 
 

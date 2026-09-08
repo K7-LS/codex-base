@@ -56,7 +56,7 @@ $Foundation = Get-ChildItem `
 # Прямая диагностика
 pwsh -NoProfile -File $Foundation `
   doctor -Home $env:USERPROFILE -Target codex `
-  -ClientId codex-cli -ClientVersion 0.146.0-alpha.3.1 -Json
+  -ClientId codex-cli -ClientVersion 0.153.1 -Json
 
 # Инвентарь
 pwsh -NoProfile -File $Foundation `

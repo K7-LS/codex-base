@@ -37,6 +37,8 @@ class GeneratedDocsTest(unittest.TestCase):
                 generator.ROOT = root
                 self.assertEqual(generator.main(), 0)
                 first = json.loads((root / "reports/static-token-audit.json").read_text())
+                operations = (root / "docs/INSTALL-AND-NETWORK.md").read_text(encoding="utf-8")
+                self.assertIn(f"-ClientVersion {generator.SUPPORTED_CODEX_CLIENT} -Json", operations)
                 with (root / "AGENTS.md").open("a", encoding="utf-8") as stream:
                     stream.write("\nA changed source instruction.\n")
                 self.assertEqual(generator.main(), 0)
