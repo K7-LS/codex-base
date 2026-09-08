@@ -119,6 +119,25 @@ function Get-LlmSyncPolicy {
             throw 'Sync evidence verdict contains an unsafe value.'
         }
     }
+    if ([string]$policy.evidence.style -ceq 'flat') {
+        if ($null -eq $policy.evidence.PSObject.Properties['required_protocol'] -or
+            $null -eq $policy.evidence.PSObject.Properties['required_foundation_protocol'] -or
+            $null -eq $policy.evidence.PSObject.Properties['required_contract']) {
+            throw 'Sync policy acceptance protocol is missing or invalid.'
+        }
+        foreach ($field in @('id', 'sha256', 'suite_sha256')) {
+            if ($null -eq $policy.evidence.required_contract.PSObject.Properties[$field]) {
+                throw 'Sync policy acceptance contract is incomplete.'
+            }
+        }
+        if ([string]$policy.evidence.required_protocol -notmatch '^[a-z][a-z0-9-]+$' -or
+            [string]$policy.evidence.required_foundation_protocol -cne 'foundation-engine-isolated-v1' -or
+            [string]$policy.evidence.required_contract.id -notmatch '^[a-z][a-z0-9-]+$' -or
+            [string]$policy.evidence.required_contract.sha256 -cnotmatch '^[a-f0-9]{64}$' -or
+            [string]$policy.evidence.required_contract.suite_sha256 -cnotmatch '^[a-f0-9]{64}$') {
+            throw 'Sync policy acceptance protocol is missing or invalid.'
+        }
+    }
     return $policy
 }
 
@@ -254,6 +273,9 @@ function Assert-LlmReleaseEvidence {
     if ([string]$Evidence.target -cne [string]$script:LlmSyncPolicy.target) {
         throw 'Acceptance evidence target differs.'
     }
+    if ([string]$Manifest.acceptance_evidence_sha256 -cne (Get-LlmSha256File -Path $EvidencePath)) {
+        throw 'Acceptance evidence asset SHA-256 differs.'
+    }
     $style = [string]$script:LlmSyncPolicy.evidence.style
     $verdictRoot = if ($style -ceq 'flat') {
         $Evidence
@@ -273,6 +295,35 @@ function Assert-LlmReleaseEvidence {
         }
     }
     if ($style -ceq 'flat') {
+        if ($null -eq $Evidence.PSObject.Properties['FOUNDATION_SYNTHETIC'] -or
+            [string]$Evidence.FOUNDATION_SYNTHETIC -cne 'NOT_RUN' -or
+            $null -eq $Evidence.PSObject.Properties['foundation'] -or
+            $null -eq $Evidence.foundation -or
+            $null -eq $Evidence.foundation.PSObject.Properties['acceptance_protocol'] -or
+            [string]$Evidence.foundation.acceptance_protocol -cne [string]$script:LlmSyncPolicy.evidence.required_foundation_protocol -or
+            [string]$Evidence.foundation.FOUNDATION_ENGINE_ACCEPTANCE -cne 'PASS' -or
+            [string]$Evidence.foundation.FOUNDATION_SYNTHETIC -cne 'NOT_RUN' -or
+            [string]$Evidence.foundation.INSTALLER_ACCEPTANCE -cne 'NOT_RUN' -or
+            [string]$Evidence.foundation.engine_version -cne [string]$Manifest.foundation_engine_version -or
+            [string]$Evidence.foundation.engine_builds.ps7.files.'engine-manifest.json' -cne [string]$Manifest.foundation_engine_manifest_sha256 -or
+            [string]$Evidence.foundation.engine_builds.ps51.files.'engine-manifest.json' -cne [string]$Manifest.foundation_engine_manifest_sha256) {
+            throw 'Acceptance evidence Foundation engine protocol or binding differs.'
+        }
+        if ($null -eq $Evidence.PSObject.Properties['acceptance_protocol'] -or
+            $null -eq $Evidence.PSObject.Properties['MATCHED_AB'] -or
+            [string]$Evidence.acceptance_protocol -cne [string]$script:LlmSyncPolicy.evidence.required_protocol -or
+            [string]$Evidence.MATCHED_AB -cne 'NOT_REQUIRED') {
+            throw 'Acceptance evidence current protocol differs.'
+        }
+        if ($null -eq $Manifest.PSObject.Properties['core_behavior_contract']) {
+            throw 'Acceptance evidence core contract differs.'
+        }
+        foreach ($field in @('id', 'sha256', 'suite_sha256')) {
+            if ($null -eq $Manifest.core_behavior_contract.PSObject.Properties[$field] -or
+                [string]$Manifest.core_behavior_contract.$field -cne [string]$script:LlmSyncPolicy.evidence.required_contract.$field) {
+                throw 'Acceptance evidence core contract differs.'
+            }
+        }
         if ([string]$Evidence.PROGRAM_RELEASE -cne (
             [string]$script:LlmSyncPolicy.evidence.program_release
         )) {
@@ -290,7 +341,8 @@ function Assert-LlmReleaseEvidence {
             'components_lock_sha256',
             'source',
             'foundation_engine_version',
-            'foundation_engine_manifest_sha256'
+            'foundation_engine_manifest_sha256',
+            'core_behavior_contract'
         )) {
             $left = $Evidence.release_binding.$field |
                 ConvertTo-Json -Compress -Depth 30
@@ -420,6 +472,21 @@ function Assert-LlmReleaseFiles {
         }
         $package = [Text.Encoding]::UTF8.GetString($packageBytes) |
             ConvertFrom-Json -ErrorAction Stop
+        if ([string]$script:LlmSyncPolicy.evidence.style -ceq 'flat') {
+            if ($null -eq $package.PSObject.Properties['core_behavior_contract']) {
+                throw 'Embedded core contract differs.'
+            }
+            foreach ($field in @('id', 'sha256', 'suite_sha256')) {
+                if ($null -eq $package.core_behavior_contract.PSObject.Properties[$field] -or
+                    [string]$package.core_behavior_contract.$field -cne [string]$manifest.core_behavior_contract.$field) {
+                    throw 'Embedded core contract differs.'
+                }
+            }
+            $contractBytes = Read-LlmZipEntryBytes -Archive $archive -Name '.codex/base/core-eval-contract.json'
+            if ((Get-LlmSha256Bytes -Bytes $contractBytes) -cne [string]$manifest.core_behavior_contract.sha256) {
+                throw 'Embedded core contract SHA-256 differs.'
+            }
+        }
         if ([string]$package.target -cne (
             [string]$script:LlmSyncPolicy.target
         ) -or

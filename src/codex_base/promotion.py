@@ -10,18 +10,25 @@ from .acceptance import (
     evidence_body_sha256,
     release_binding_from_manifest,
 )
-from .final_evidence import LEGACY_SYNC_BOOTSTRAP_CONTRACT
+from .final_evidence import LEGACY_SYNC_BOOTSTRAP_CONTRACT, _validate_canary
+from .foundation_evidence import validate_foundation_engine
+from .session_tools import validate_session_tools_asset_record, validate_session_tools_release_binding
+from .core_acceptance import (
+    ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON,
+    copy_core_artifacts, package_source_inventory, read_json, validate_core_behavior,
+    validate_current_wire_keys,
+)
 
 
 REQUIRED_FULL_RELEASE_GATES = (
-    "FOUNDATION_SYNTHETIC",
+    "FOUNDATION_ENGINE_ACCEPTANCE",
     "OFFLINE_CODEX_CONTENT",
     "STATIC_TOKEN_ACCEPTANCE",
     "CODEX_OFFLINE_INTEGRATION",
     "CODEX_TESTS",
     "CANDIDATE_OFFLINE",
-    "MATCHED_AB",
     "CODEX_CANARY",
+    "CORE_BEHAVIOR",
     "FULL_RELEASE_CODEX",
 )
 
@@ -46,7 +53,7 @@ def _sha256_bytes(payload: bytes) -> str:
 
 
 def _load_json(path: Path) -> dict[str, object]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = read_json(path.read_bytes())
     if not isinstance(value, dict):
         raise ValueError(f"{path.name} must contain an object")
     return value
@@ -57,6 +64,8 @@ def _verify_evidence(
     binding: dict[str, object],
     *,
     require_full_release: bool,
+    package_path: Path | None = None,
+    artifact_root: Path | None = None,
 ) -> None:
     if (
         evidence.get("schema_version") != 1
@@ -71,11 +80,27 @@ def _verify_evidence(
     if evidence.get("release_binding") != binding:
         raise ValueError("acceptance evidence release binding differs")
     if require_full_release:
+        validate_current_wire_keys(evidence)
+        if evidence.get("FOUNDATION_SYNTHETIC") != "NOT_RUN":
+            raise ValueError("current engine-only evidence cannot claim historical Foundation acceptance")
+        if "core_behavior" in evidence:
+            raise ValueError("obsolete core_behavior wire key collides with the PowerShell verdict key")
+        if (evidence.get("acceptance_protocol") != ACCEPTANCE_PROTOCOL
+            or evidence.get("MATCHED_AB") != "NOT_REQUIRED"
+            or evidence.get("matched_ab_not_required_reason") != MATCHED_AB_NOT_REQUIRED_REASON):
+            raise ValueError("current core acceptance protocol is missing or differs")
         for gate in REQUIRED_FULL_RELEASE_GATES:
             if evidence.get(gate) != "PASS":
                 raise ValueError(f"{gate} is not PASS")
+        validate_foundation_engine(evidence.get("foundation"), evidence.get("foundation_artifacts"),
+                                   binding, package_path=package_path)
         if evidence.get("PROGRAM_RELEASE") != "1/3":
             raise ValueError("PROGRAM_RELEASE is not 1/3")
+        if package_path is None or artifact_root is None:
+            raise ValueError("core behavior evidence requires package and artifact paths")
+        validate_core_behavior(evidence.get("core_behavior_evidence"), binding,
+                               package_path=package_path, artifact_root=artifact_root)
+        _validate_canary(evidence.get("canary_evidence"), binding, package_path)
 
 
 def _verify_candidate(
@@ -110,7 +135,7 @@ def _verify_candidate(
         "acceptance_evidence_sha256"
     ):
         raise ValueError("candidate evidence hash differs")
-    offline_evidence = json.loads(offline_evidence_bytes)
+    offline_evidence = read_json(offline_evidence_bytes)
     if not isinstance(offline_evidence, dict):
         raise ValueError("candidate evidence must contain an object")
     _verify_evidence(
@@ -149,6 +174,15 @@ def _verify_candidate(
         raise ValueError("candidate package target/version differs")
     if embedded_lock != lock_bytes:
         raise ValueError("candidate embedded components lock differs")
+    package_source_inventory(zip_path, binding)
+    session_asset = validate_session_tools_asset_record(manifest.get("session_tools_asset"), expected_version=version)
+    session_path = candidate_dir / session_asset["name"]
+    if not session_path.is_file() or session_path.is_symlink():
+        raise ValueError("candidate session tools asset is missing or linked")
+    validate_session_tools_release_binding(
+        release_manifest=manifest, package_manifest=package_manifest,
+        session_asset_path=session_path, package_archive_path=zip_path,
+    )
     return manifest, binding, zip_path, zip_bytes, lock_bytes
 
 
@@ -165,13 +199,15 @@ def promote_candidate(
         lock_bytes,
     ) = _verify_candidate(candidate_dir)
     final_evidence_bytes = final_evidence_path.read_bytes()
-    final_evidence = json.loads(final_evidence_bytes)
+    final_evidence = read_json(final_evidence_bytes)
     if not isinstance(final_evidence, dict):
         raise ValueError("final evidence must contain an object")
     _verify_evidence(
         final_evidence,
         binding,
         require_full_release=True,
+        package_path=source_zip,
+        artifact_root=final_evidence_path.parent,
     )
     if output_dir.exists() and any(output_dir.iterdir()):
         raise ValueError("stable output directory must be empty")
@@ -179,10 +215,23 @@ def promote_candidate(
 
     destination_zip = output_dir / source_zip.name
     destination_zip.write_bytes(zip_bytes)
+    session_name = candidate_manifest["session_tools_asset"]["name"]
+    session_bytes = (candidate_dir / session_name).read_bytes()
+    destination_session = output_dir / session_name
+    destination_session.write_bytes(session_bytes)
+    with zipfile.ZipFile(destination_zip) as archive:
+        package_manifest = read_json(archive.read("package-manifest.json"))
+    validate_session_tools_release_binding(
+        release_manifest=candidate_manifest, package_manifest=package_manifest,
+        session_asset_path=destination_session, package_archive_path=destination_zip,
+    )
     destination_lock = output_dir / "components.lock.json"
     destination_lock.write_bytes(lock_bytes)
     destination_evidence = output_dir / "acceptance-evidence.json"
     destination_evidence.write_bytes(final_evidence_bytes)
+    copy_core_artifacts(final_evidence["core_behavior_evidence"], final_evidence_path.parent, output_dir)
+    _verify_evidence(final_evidence, binding, require_full_release=True,
+                     package_path=destination_zip, artifact_root=output_dir)
 
     stable_manifest = dict(candidate_manifest)
     stable_manifest["channel"] = "stable"
@@ -229,6 +278,8 @@ def create_package_acceptance(
         evidence,
         binding,
         require_full_release=True,
+        package_path=stable_manifest_path.parent / str(binding["asset"]["name"]),
+        artifact_root=evidence_path.parent,
     )
     integrity_state = evidence.get("RELEASE_INTEGRITY")
     bootstrap_contract = evidence.get("release_integrity_contract")

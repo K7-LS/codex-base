@@ -2,7 +2,8 @@
   "schema": 1,
   "estimator": "ceil(utf8_bytes/3)",
   "limits": {
-    "hot_tokens": 1500,
+    "hot_utf8_bytes": 12288,
+    "project_instruction_headroom_bytes": 8192,
     "skill_discovery_chars": 7200,
     "agent_discovery_chars": 4000
   },

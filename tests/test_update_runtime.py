@@ -911,10 +911,8 @@ def test_runtime_has_only_minimal_one_way_hook_and_no_model_defaults(repo_root):
     config = tomllib.loads((repo_root / "runtime" / "config.toml").read_text("utf-8"))
     assert "model" not in config
     assert "model_reasoning_effort" not in config
-    assert set(config["mcp_servers"]) == {
-        "k7-autocad-bridge",
-        "k7-revit-bridge",
-    }
+    for key in ("mcp_servers", "plugins", "plugin_marketplaces"):
+        assert key not in config, f"{key} must remain user/host-owned"
     assert config["features"]["hooks"] is True
 
     hook = (repo_root / "runtime" / "hooks" / "check_release.ps1").read_text(

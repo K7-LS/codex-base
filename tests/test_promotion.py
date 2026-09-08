@@ -16,7 +16,10 @@ from codex_base.promotion import (
     create_package_acceptance,
     promote_candidate,
 )
-from codex_base.release import bind_acceptance_evidence, build_release
+from codex_base.release import SUPPORTED_CODEX_CLIENT, bind_acceptance_evidence, build_release
+from core_evidence_support import synthetic_core, synthetic_canary, add_synthetic_contract
+from foundation_evidence_support import write_fake_engine, synthetic_foundation
+from codex_base.core_acceptance import ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON
 
 
 def _json_bytes(value: object) -> bytes:
@@ -49,6 +52,7 @@ def _foundation(root: Path) -> Path:
         ).hexdigest(),
     }
     (root / "engine-manifest.json").write_bytes(_json_bytes(manifest))
+    write_fake_engine(root)
     return root
 
 
@@ -59,12 +63,14 @@ def _candidate(repo_root: Path, tmp_path: Path) -> tuple[Path, dict[str, object]
         "0.1.0",
         _foundation(tmp_path / "foundation"),
     )
+    add_synthetic_contract(built)
     candidate = tmp_path / "candidate"
     candidate.mkdir()
     for path in (
         built.zip_path,
         built.manifest_path,
         built.component_lock_path,
+        built.manifest_path.parent / built.manifest["session_tools_asset"]["name"],
     ):
         shutil.copy2(path, candidate / path.name)
     binding = release_binding_from_manifest(built.manifest)
@@ -98,10 +104,14 @@ def _final_evidence(
         "version": str(binding["version"]),
         "release_binding": binding,
         **{gate: "PASS" for gate in REQUIRED_FULL_RELEASE_GATES},
+        "FOUNDATION_SYNTHETIC": "NOT_RUN",
         "RELEASE_INTEGRITY": (
             "PASS" if legacy_sync_bootstrap else "PENDING_PUBLICATION"
         ),
         "PROGRAM_RELEASE": "1/3",
+        "acceptance_protocol": ACCEPTANCE_PROTOCOL,
+        "MATCHED_AB": "NOT_REQUIRED",
+        "matched_ab_not_required_reason": MATCHED_AB_NOT_REQUIRED_REASON,
     }
     if legacy_sync_bootstrap:
         evidence["release_integrity_contract"] = {
@@ -113,6 +123,11 @@ def _final_evidence(
                 "gh attestation verify",
             ],
         }
+    evidence["core_behavior_evidence"] = synthetic_core(
+        binding, path.parent / "candidate" / binding["asset"]["name"], path.parent
+    )
+    evidence["canary_evidence"] = synthetic_canary(binding, path.parent / "candidate" / binding["asset"]["name"])
+    evidence.update(synthetic_foundation(binding, path.parent / "candidate" / binding["asset"]["name"]))
     if failed_gate:
         evidence[failed_gate] = "NOT_PASS"
     evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
@@ -167,6 +182,8 @@ def test_promotion_reuses_exact_candidate_zip_bytes(repo_root, tmp_path):
     result = promote_candidate(candidate, final, tmp_path / "stable")
 
     assert result.zip_path.read_bytes() == source_bytes
+    session_name = "session-tools-codex-0.1.0.zip"
+    assert (result.zip_path.parent / session_name).read_bytes() == (candidate / session_name).read_bytes()
     assert result.zip_sha256 == hashlib.sha256(source_bytes).hexdigest()
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     assert manifest["channel"] == "stable"
@@ -174,6 +191,21 @@ def test_promotion_reuses_exact_candidate_zip_bytes(repo_root, tmp_path):
         final.read_bytes()
     ).hexdigest()
     assert len(manifest["promoted_from_candidate_manifest_sha256"]) == 64
+
+
+@pytest.mark.parametrize("mutation", ["missing", "changed"])
+def test_promotion_rejects_incomplete_or_changed_session_tools(repo_root, tmp_path, mutation):
+    candidate, binding = _candidate(repo_root, tmp_path)
+    final = _final_evidence(tmp_path / "final-evidence.json", binding)
+    asset = candidate / "session-tools-codex-0.1.0.zip"
+    if mutation == "missing":
+        asset.unlink()
+    else:
+        asset.write_bytes(asset.read_bytes() + b"changed")
+    output = tmp_path / "stable"
+    with pytest.raises(ValueError, match="session tools"):
+        promote_candidate(candidate, final, output)
+    assert not output.exists()
 
 
 def test_codex_package_acceptance_matches_employee_installer_contract(
@@ -203,7 +235,7 @@ def test_codex_package_acceptance_matches_employee_installer_contract(
     assert acceptance["package_acceptance"] == "PASS"
     assert acceptance["client"] == {
         "id": "codex-cli",
-        "supported_version": "0.146.0-alpha.3.1",
+        "supported_version": SUPPORTED_CODEX_CLIENT,
     }
     assert acceptance["asset"]["sha256"] == stable.zip_sha256
     assert acceptance["immutable_release"] is True
@@ -309,7 +341,7 @@ def test_codex_package_acceptance_rejects_wrong_evidence_identity(
 
 @pytest.mark.parametrize(
     "gate",
-    ["MATCHED_AB", "CODEX_CANARY", "FULL_RELEASE_CODEX"],
+    ["CORE_BEHAVIOR", "CODEX_CANARY", "FULL_RELEASE_CODEX"],
 )
 def test_promotion_fails_closed_when_required_gate_is_missing_or_not_pass(
     repo_root, tmp_path, gate
@@ -325,3 +357,21 @@ def test_promotion_fails_closed_when_required_gate_is_missing_or_not_pass(
         promote_candidate(candidate, final, tmp_path / "stable")
 
     assert not (tmp_path / "stable").exists()
+
+
+def test_package_acceptance_rechecks_core_after_promotion(repo_root, tmp_path):
+    candidate, binding = _candidate(repo_root, tmp_path)
+    final = _final_evidence(tmp_path / "final-evidence.json", binding)
+    stable = promote_candidate(candidate, final, tmp_path / "stable")
+    verification = _release_verification(tmp_path / "verification.json", stable.manifest_path)
+    evidence = json.loads(stable.evidence_path.read_bytes())
+    evidence.pop("core_behavior_evidence")
+    evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
+    stable.evidence_path.write_bytes(_json_bytes(evidence))
+    manifest = json.loads(stable.manifest_path.read_bytes())
+    manifest["acceptance_evidence_sha256"] = hashlib.sha256(stable.evidence_path.read_bytes()).hexdigest()
+    stable.manifest_path.write_bytes(_json_bytes(manifest))
+    with pytest.raises(ValueError, match="core behavior"):
+        create_package_acceptance(stable.manifest_path, stable.evidence_path, verification,
+                                  tmp_path / "must-not-exist.json")
+    assert not (tmp_path / "must-not-exist.json").exists()

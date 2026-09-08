@@ -65,7 +65,13 @@ def test_hot_and_warm_surfaces_are_native_and_bounded(repo_root):
     warm_paths = [repo_root / "AGENTS.md", *sorted((repo_root / "agents").glob("*.toml"))]
     skill_entrypoints = sorted((repo_root / "skills").glob("*/SKILL.md"))
 
-    assert (len(hot.encode("utf-8")) + 2) // 3 <= 1500
+    budget = json.loads((repo_root / "context-budget.json").read_text(encoding="utf-8"))
+    config = tomllib.loads((repo_root / "runtime" / "config.toml").read_text(encoding="utf-8"))
+    hot_bytes = len(hot.encode("utf-8"))
+    assert hot_bytes <= budget["limits"]["hot_utf8_bytes"]
+    assert hot_bytes + budget["limits"]["project_instruction_headroom_bytes"] <= config["project_doc_max_bytes"]
+    for key in ("model", "model_reasoning_effort", "model_provider", "model_providers"):
+        assert key not in config, f"{key} must remain user/host-owned"
     for path in warm_paths:
         text = path.read_text(encoding="utf-8")
         for pattern in (

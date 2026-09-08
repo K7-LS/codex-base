@@ -105,6 +105,6 @@ def audit_static_context(
         },
         "limitations": [
             "Static tokens are a conservative UTF-8 byte estimate, not provider billing.",
-            "One four-call Terra matched A/B is owner-authorized; repeat or expansion requires new approval.",
+            "This static report neither authorizes a model run nor proves behavioral quality; prior evidence must match the current candidate bytes.",
         ],
     }

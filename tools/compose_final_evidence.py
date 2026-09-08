@@ -12,10 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codex_base.final_evidence import compose_final_evidence  # noqa: E402
+from codex_base.core_acceptance import copy_core_artifacts, read_json  # noqa: E402
 
 
 def _load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = read_json(path.read_bytes())
     if not isinstance(value, dict):
         raise ValueError(f"{path.name} must contain an object")
     return value
@@ -37,21 +38,29 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Compose pre-publication Codex FULL evidence from an accepted "
-            "candidate, the one authorized matched A/B, and a live canary."
+            "candidate, package-bound professional-core evidence, and a live canary."
         )
     )
     parser.add_argument("--candidate-evidence", required=True, type=Path)
-    parser.add_argument("--matched-ab-evidence", required=True, type=Path)
     parser.add_argument("--canary-evidence", required=True, type=Path)
+    parser.add_argument("--core-behavior-evidence", required=True, type=Path)
+    parser.add_argument("--candidate-package", required=True, type=Path)
     parser.add_argument("--legacy-sync-bootstrap", action="store_true")
     parser.add_argument("--output", required=True, type=Path)
     arguments = parser.parse_args()
     final = compose_final_evidence(
         candidate=_load(arguments.candidate_evidence.resolve()),
-        matched_ab=_load(arguments.matched_ab_evidence.resolve()),
         canary=_load(arguments.canary_evidence.resolve()),
+        core_behavior=_load(arguments.core_behavior_evidence.resolve()),
+        package_path=arguments.candidate_package.resolve(),
+        artifact_root=arguments.core_behavior_evidence.resolve().parent,
         legacy_sync_bootstrap=arguments.legacy_sync_bootstrap,
     )
+    if arguments.output.exists():
+        raise RuntimeError("final evidence exists; refusing to overwrite")
+    if arguments.output.resolve().parent != arguments.core_behavior_evidence.resolve().parent:
+        copy_core_artifacts(final["core_behavior_evidence"], arguments.core_behavior_evidence.resolve().parent,
+                            arguments.output.resolve().parent)
     _write_new(arguments.output.resolve(), final)
     print(
         json.dumps(

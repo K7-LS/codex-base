@@ -272,16 +272,25 @@ def test_builder_rejects_source_symlink_and_executable(repo_root, tmp_path):
     skill = source / "SKILL.md"
     skill.write_text("safe\n", encoding="utf-8")
     link = source / "linked.md"
-    try:
+    if os.name == "nt":
+        # Junctions exercise the same reparse-point rejection without requiring
+        # the Windows privilege needed to create symbolic links.
+        import subprocess
+        import shutil
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        script = tmp_path / "junction.ps1"
+        script.write_text("param($Link,$Target)\n$ErrorActionPreference='Stop'\nNew-Item -ItemType Junction -Path $Link -Target $Target | Out-Null\n", encoding="utf-8")
+        subprocess.run([shutil.which("pwsh") or "powershell.exe", "-NoProfile", "-File", str(script), str(link), str(outside)], check=True)
+    else:
         os.symlink(skill, link)
-    except OSError:
-        pytest.skip("symlink creation is unavailable")
     with pytest.raises(ValueError, match="symlink"):
         build_session_tools_bundle(clone, tmp_path / "dist", "0.1.4")
 
-    link.unlink()
     if os.name == "nt":
+        link.rmdir()
         return
+    link.unlink()
     executable = source / "run.md"
     executable.write_text("not executable\n", encoding="utf-8")
     executable.chmod(executable.stat().st_mode | stat.S_IXUSR)

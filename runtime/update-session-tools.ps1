@@ -596,14 +596,31 @@ function Read-SessionArchive {
 
 function Assert-ReleaseManifest {
     param($Manifest, [string]$Tag, [string]$Version)
-    Assert-ExactProperties $Manifest @(
+    $properties = @(
         'schema_version', 'target', 'version', 'tag', 'channel', 'client',
         'foundation_engine_version',
         'foundation_engine_manifest_sha256', 'source', 'asset',
         'package_manifest_sha256', 'components_lock_sha256',
         'session_tools_asset', 'requires', 'acceptance_evidence_sha256',
         'promoted_from_candidate_manifest_sha256'
-    ) 'INVALID_RELEASE_MANIFEST'
+    )
+    $hasCoreContract = $null -ne $Manifest.PSObject.Properties['core_behavior_contract']
+    if ($hasCoreContract) { $properties += 'core_behavior_contract' }
+    Assert-ExactProperties $Manifest $properties 'INVALID_RELEASE_MANIFEST'
+    if ($hasCoreContract) {
+        # Historical envelopes omit this field. Current v1 references are pinned;
+        # recognizing the reference does not attest to the base's behavioral tests.
+        $contract = $Manifest.core_behavior_contract
+        Assert-ExactProperties $contract @('id', 'sha256', 'suite_sha256') 'INVALID_RELEASE_MANIFEST'
+        if ($contract.id -isnot [string] -or
+            $contract.sha256 -isnot [string] -or
+            $contract.suite_sha256 -isnot [string] -or
+            $contract.id -cne 'k7-professional-core-v1' -or
+            $contract.sha256 -cne '028ba6363bff000b4aa8551ca27a66a69631cb29dacdc5319a4ce0b696b3a184' -or
+            $contract.suite_sha256 -cne '62b45686075d01277f9c924ca245f105dc5c54ba385f74084b7bdd379218d49c') {
+            throw 'INVALID_RELEASE_MANIFEST'
+        }
+    }
     if (-not (Test-ExactInteger $Manifest.schema_version) -or $Manifest.schema_version -ne 1 -or
         [string]$Manifest.target -cne $script:Target -or [string]$Manifest.version -cne $Version -or
         [string]$Manifest.tag -cne $Tag -or [string]$Manifest.channel -cne 'stable') {

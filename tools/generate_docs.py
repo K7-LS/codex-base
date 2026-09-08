@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from codex_base.token_audit import audit_static_context  # noqa: E402
+from codex_base.release import SUPPORTED_CODEX_CLIENT  # noqa: E402
 
 
 def _read(name: str):
@@ -71,9 +72,11 @@ def main() -> int:
 
 ## Что Codex знает на старте
 
-На каждом новом сеансе загружается только HOT-слой: компактные запреты,
-маршрутизация основных строительных доменов, reviewer/risk gates,
-token-дисциплина, lazy dependency policy и one-way sync. WARM discovery
+Обязательное профессиональное ядро находится непосредственно в `AGENTS.md`:
+понимание задачи, совместные решения, обоснованное возражение, проверка
+источников, повседневная строительная работа, язык и приёмка результата.
+Обычная ВОР относится к основной базе; отдельный модуль выбирают по сложности
+процесса. Ядро также задаёт маршруты специалистов и разрешения. WARM discovery
 показывает названия, короткие описания и пути {agent_count} агентов, {capability_skill_count} capability-skills
 и одного control-skill `$sync-base`.
 
@@ -81,6 +84,10 @@ token-дисциплина, lazy dependency policy и one-way sync. WARM discove
 передаются в контекст. Они читаются только после совпадения задачи с metadata.
 Простой разговор выполняется без инструментов, custom agents и reviewers.
 Модель и reasoning-level приходят от пользователя/host и базой не задаются.
+Доставку ядра проверяют по точному совпадению байтов в установочном payload.
+Его предел и запас для проектных инструкций заданы в `context-budget.json`;
+совместимость с `project_doc_max_bytes` проверяется тестом. Реальная загрузка
+зависит также от клиентских overrides и цепочки проектных инструкций.
 
 ## {agent_count} агентов
 
@@ -162,7 +169,7 @@ $Foundation = Get-ChildItem `
 # Прямая диагностика
 pwsh -NoProfile -File $Foundation `
   doctor -Home $env:USERPROFILE -Target codex `
-  -ClientId codex-cli -ClientVersion 0.146.0-alpha.3.1 -Json
+  -ClientId codex-cli -ClientVersion {SUPPORTED_CODEX_CLIENT} -Json
 
 # Инвентарь
 pwsh -NoProfile -File $Foundation `
@@ -182,63 +189,18 @@ pwsh -NoProfile -File $Foundation `
 | Сокращение | — | {reduction:.2f}% |
 
 Это оценка статического startup/discovery-контекста, а не биллинг провайдера.
-Matched A/B пока не запускался, поэтому снижение total input по реальным
-запросам ещё не доказано. Владелец разрешил ровно один guarded-прогон:
-legacy/candidate × «привет»/«что ты умеешь» на GPT-5.6 Terra, low reasoning.
-Повтор или расширение матрицы требует нового разрешения.
+Этот отчёт не запускает matched A/B и не доказывает снижение total input
+по реальным запросам. Предыдущие результаты применимы только при совпадении
+проверяемых байтов и условий. Статический отчёт не является разрешением
+на новый модельный прогон. Качество работы проверяется отдельно по
+`evals/core/README.md`; экономия контекста его не подтверждает.
 """
     (docs / "INSTALL-AND-NETWORK.md").write_text(
         operations, encoding="utf-8", newline="\n"
     )
 
-    status = """# Release status
-
-Авторитетные hash и offline-вердикты не хранятся как изменяемый tracked-report.
-Они формируются `tools/run_acceptance.py` только из чистого Git commit/tree и
-попадают в `dist/candidate-X.Y.Z/`:
-
-- `codex-base-X.Y.Z.zip`;
-- `release-manifest.json`;
-- `components.lock.json`;
-- `acceptance-evidence.json`;
-- `offline-acceptance-summary.json`.
-
-Candidate manifest связывает evidence; evidence связывает source commit/tree,
-ZIP, package manifest и component lock. Stable promotion сохраняет те же ZIP
-bytes и требует явный `PASS` каждого release-gate.
-
-Текущий release checkpoint:
-
-- immutable releases включены для будущих GitHub Releases, но tag/release ещё
-  не публиковался;
-- первый hub canary пакета `0.1.0` обнаружил дефект Foundation rollback;
-  предыдущая управляемая поверхность и protected data восстановлены, а пакет
-  `0.1.0` запрещён к продвижению;
-- исправленный Foundation `0.2.1` и текущий Codex candidate прошли offline
-  acceptance, но provider/live canary текущих байтов ещё отсутствует;
-- последняя разрешённая четырёхвызовная matched A/B матрица начала первый
-  вызов, завершила `0` и остановилась на `item.completed` с неизвестным
-  whitelist item type. Exact-version upstream source
-  `rust-v0.146.0-alpha.3.1` доказал: единственный отсутствовавший enum member —
-  non-fatal `error`; terminal failures остаются top-level `error` или
-  `turn.failed`. Остальные три вызова не выполнялись,
-  `repeat_authorized=false`;
-- runner считает non-fatal error items без сохранения message, продолжает
-  блокировать model reroute и сохраняет только privacy-safe evidence.
-  Release-tooling файлы не входят в candidate ZIP, поэтому accepted bytes не
-  изменились. До нового повтора нужен reviewed clean commit и ещё одно явное
-  разрешение владельца;
-- stable release и employee rollout остаются заблокированы до всех release
-  gates;
-- принятые client/package/canary для `claude-base-v2` и `opencode-base` пока
-  отсутствуют.
-
-Поэтому `FULL_RELEASE_CODEX` остаётся `NOT_PASS`, а общий program verdict —
-`0/3`.
-"""
-    (docs / "RELEASE-STATUS.md").write_text(
-        status, encoding="utf-8", newline="\n"
-    )
+    # Dated release checkpoints require fresh evidence, not regeneration.
+    # Preserve docs/RELEASE-STATUS.md verbatim.
     return 0
 
 

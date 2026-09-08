@@ -94,18 +94,11 @@ def test_desired_state_is_codex_native_complete_and_protects_user_state(repo_roo
     assert desired["platform_owned"] == [
         {"kind": "mcp", "id": "node_repl"},
     ]
-    assert set(desired["mcp"]) == {
-        "k7-autocad-bridge",
-        "k7-revit-bridge",
-    }
-    assert set(desired["plugins"]) == {
-        "documents@openai-primary-runtime",
-        "pdf@openai-primary-runtime",
-        "presentations@openai-primary-runtime",
-        "spreadsheets@openai-primary-runtime",
-        "template-creator@openai-primary-runtime",
-    }
+    assert desired["mcp"] == []
+    assert desired["plugins"] == []
     assert desired["marketplaces"] == []
+    assert desired["retired_ids"] == []
+    assert desired["migrations"] == []
     assert all("claude" not in plugin.lower() for plugin in desired["plugins"])
     assert set(desired["protected_state"]) >= {
         ".codex/auth.json",
@@ -153,6 +146,22 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
         assert names == sorted(names)
         assert all(info.date_time == (1980, 1, 1, 0, 0, 0) for info in archive.infolist())
         assert ".codex/AGENTS.md" in names
+        committed_hot = subprocess.run(
+            ["git", "show", f"{source['commit']}:AGENTS.md"],
+            cwd=repo_root, check=True, capture_output=True,
+        ).stdout
+        assert archive.read(".codex/AGENTS.md") == committed_hot
+        committed_contract = subprocess.run(
+            ["git", "show", f"{source['commit']}:evals/core/contract.json"],
+            cwd=repo_root, check=False, capture_output=True,
+        )
+        if committed_contract.returncode == 0:
+            assert archive.read(".codex/base/core-eval-contract.json") == committed_contract.stdout
+        else:
+            # The dirty caller has v1 policy, but an older exported commit
+            # must not inherit it or become a current-protocol candidate.
+            assert ".codex/base/core-eval-contract.json" not in names
+            assert "core_behavior_contract" not in first.manifest
         assert ".codex/config.toml" in names
         assert ".codex/hooks.json" in names
         assert ".codex/base/VERSION" in names
@@ -228,7 +237,7 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
             ".codex/base/components.lock.json",
             ".codex/base/desired-state.json",
             ".codex/hooks.json",
-        }
+        } | ({".codex/base/core-eval-contract.json"} if committed_contract.returncode == 0 else set())
         assert managed_surface["replace_files"] == sorted(
             managed_surface["replace_files"]
         )
@@ -254,16 +263,7 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
             "scope": "current-user",
             "set": [],
         }
-        reconcile = package_manifest["desired_state"]["toml_reconcile"][0]
-        assert reconcile["allowed_entries"] == [
-            "mcp_servers.k7-autocad-bridge",
-            "mcp_servers.k7-revit-bridge",
-            "plugins.documents@openai-primary-runtime",
-            "plugins.pdf@openai-primary-runtime",
-            "plugins.presentations@openai-primary-runtime",
-            "plugins.spreadsheets@openai-primary-runtime",
-            "plugins.template-creator@openai-primary-runtime",
-        ]
+        assert package_manifest["desired_state"]["toml_reconcile"] == []
         baseline = package_manifest["session_tools_baseline"]
         assert baseline["manifest_path"] == (
             "session-tools-baseline/session-tools-manifest.json"
