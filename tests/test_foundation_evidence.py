@@ -96,6 +96,29 @@ def test_rebound_receipt_still_requires_real_scope_invariants(engine_case, mutat
         validate_foundation_engine(evidence, artifacts, binding, package_path=package)
 
 
+@pytest.mark.parametrize("seeded_key", [None, "files", "fake_environment"])
+def test_fresh_install_receipt_requires_absent_initial_state(engine_case, seeded_key):
+    binding, package, evidence, artifacts = engine_case
+    for row in evidence["engine_lifecycle"]["shells"].values():
+        ref = next(ref for ref in row["receipts"]
+                   if read_json(artifacts[ref["sha256"]]["text"].encode())["scenario_id"] == "fresh_install_rollback")
+        receipt = read_json(artifacts[ref["sha256"]]["text"].encode())
+        assert receipt["before"] == receipt["after"] == {"files": {}, "fake_environment": {}}
+        if seeded_key:
+            artifacts.pop(ref["sha256"])
+            for state in ("before", "after"):
+                receipt[state][seeded_key]["existing"] = "f" * 64
+            raw = json_bytes(receipt)
+            ref.update(sha256=sha256(raw), bytes=len(raw))
+            artifacts[ref["sha256"]] = {"sha256": ref["sha256"], "bytes": len(raw), "text": raw.decode()}
+    evidence["evidence_body_sha256"] = body_sha256(evidence)
+    if seeded_key:
+        with pytest.raises(ValueError, match="fresh receipt state is not empty"):
+            validate_foundation_engine(evidence, artifacts, binding, package_path=package)
+    else:
+        assert validate_foundation_engine(evidence, artifacts, binding, package_path=package)["FOUNDATION_ENGINE_ACCEPTANCE"] == "PASS"
+
+
 def test_collects_only_exact_utf8_artifacts_inside_evidence_directory(engine_case, tmp_path):
     _, _, evidence, artifacts = engine_case
     root = tmp_path / "proofs"

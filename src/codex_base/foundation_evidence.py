@@ -262,8 +262,12 @@ def validate_foundation_engine(evidence: dict, artifacts: dict, binding: dict,
             for key in ("files", "fake_environment"):
                 values = _map(before.get(key), "receipt " + key)
                 _need(all(isinstance(k, str) and k and _sha(v) for k, v in values.items()), "receipt state hash invalid")
-            _need(USER_ENVIRONMENT.issubset({k.casefold() for k in before["fake_environment"]})
-                  and receipt.get("after") == before, "receipt rollback state differs")
+            if scenario == "fresh_install_rollback":
+                _need(before == {"files": {}, "fake_environment": {}}, "fresh receipt state is not empty")
+            else:
+                _need(USER_ENVIRONMENT.issubset({k.casefold() for k in before["fake_environment"]}),
+                      "existing receipt environment inventory missing")
+            _need(receipt.get("after") == before, "receipt rollback state differs")
     expected_ids = {ref["sha256"] for ref in _references(evidence)}
     _need(set(artifacts) == expected_ids, "unreferenced or missing engine artifacts")
     _need(sum(len(a["text"].encode("utf-8")) for a in artifacts.values()) <= MAX_TEXT_BYTES, "proof bundle exceeds size limit")

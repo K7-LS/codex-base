@@ -75,6 +75,9 @@ def synthetic_foundation(binding, package):
                        "real_user_environment_before": env, "real_user_environment_after": env, "unit_test_only": True}
             receipt["before"] = {"files": {".codex/AGENTS.md": "f"*64}, "fake_environment": env.copy()}
             receipt["after"] = {"files": {".codex/AGENTS.md": "f"*64}, "fake_environment": env.copy()}
+            if scenario == "fresh_install_rollback":
+                receipt["before"] = {"files": {}, "fake_environment": {}}
+                receipt["after"] = {"files": {}, "fake_environment": {}}
             row["receipts"].append(artifact(f"synthetic-results/{shell}-{scenario}.json", json_bytes(receipt)))
         evidence["engine_lifecycle"]["shells"][shell] = row
     evidence["evidence_body_sha256"] = body_sha256(evidence)
