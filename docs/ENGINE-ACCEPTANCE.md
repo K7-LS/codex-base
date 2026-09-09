@@ -8,8 +8,13 @@ execution; `FOUNDATION_SYNTHETIC` and `INSTALLER_ACCEPTANCE` stay `NOT_RUN`.
 The producer records the installer source commit/tree and SHA-256 inventories
 for VERSION, APP_VERSION, client-sources.lock.json, src, tests and tools. It
 runs syntax checks and builds in PowerShell 7 and 5.1. Both builds must contain
-the same nine files: VERSION, engine-manifest.json, foundation.ps1,
-shared-tools.lock.json and the five locked OfficeCLI payloads.
+the same version-specific files. Engine 0.5.11 requires nine: VERSION,
+engine-manifest.json, foundation.ps1, shared-tools.lock.json and the five locked
+OfficeCLI payloads. Engine 0.5.12 requires thirteen: those nine plus
+foundation-toml.ps1, vendor/tomlyn/Tomlyn.dll, vendor/tomlyn/LICENSE.txt and
+vendor/tomlyn/provenance.json. Unknown versions are rejected. The selected test
+list contains seven modules for 0.5.11 and nine for 0.5.12, including both doctor
+regression modules.
 
 Each shell must execute fresh install/rollback, existing install/rollback,
 late-failure rollback, interrupted recovery, snapshot-tamper rejection,

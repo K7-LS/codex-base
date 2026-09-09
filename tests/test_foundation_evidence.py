@@ -9,9 +9,9 @@ from core_evidence_support import minimal_package
 from foundation_evidence_support import synthetic_foundation, write_fake_engine
 
 
-@pytest.fixture
-def engine_case(tmp_path):
-    binding = {"target": "codex", "version": "0.2.0", "foundation_engine_version": "0.1.0",
+@pytest.fixture(params=["0.5.11", "0.5.12"])
+def engine_case(tmp_path, request):
+    binding = {"target": "codex", "version": "0.2.0", "foundation_engine_version": request.param,
                "asset": {"name": "synthetic.zip"}}
     package = minimal_package(tmp_path, binding)
     fixture = synthetic_foundation(binding, package)
@@ -20,7 +20,7 @@ def engine_case(tmp_path):
 
 def test_engine_only_proof_binds_actual_package_and_preserves_historical_scope(engine_case, tmp_path):
     binding, package, evidence, artifacts = engine_case
-    engine = write_fake_engine(tmp_path / "engine")
+    engine = write_fake_engine(tmp_path / "engine", binding["foundation_engine_version"])
     result = validate_foundation_engine(evidence, artifacts, binding, package_path=package, engine_root=engine)
     assert result["FOUNDATION_ENGINE_ACCEPTANCE"] == "PASS"
     assert result["lifecycle_cases"] == 14
@@ -196,11 +196,72 @@ def test_junit_class_parameter_identity_and_subcheck_aggregate_are_preserved(eng
 def test_engine_bytes_cannot_be_relabelled_as_another_version(engine_case, tmp_path):
     binding, package, evidence, artifacts = engine_case
     with zipfile.ZipFile(package) as archive:
-        entries = {name.replace("/foundation/0.1.0/", "/foundation/9.9.9/"): archive.read(name) for name in archive.namelist()}
+        entries = {name.replace(f"/foundation/{binding['foundation_engine_version']}/", "/foundation/9.9.9/"): archive.read(name) for name in archive.namelist()}
     changed = tmp_path / "relabelled.zip"
     with zipfile.ZipFile(changed, "w") as archive:
         for name, data in entries.items(): archive.writestr(name, data)
     binding["foundation_engine_version"] = evidence["engine_version"] = "9.9.9"
     evidence["evidence_body_sha256"] = body_sha256(evidence)
-    with pytest.raises(ValueError, match="actual engine VERSION differs"):
+    with pytest.raises(ValueError, match="unsupported engine version"):
+        validate_foundation_engine(evidence, artifacts, binding, package_path=changed)
+
+
+@pytest.mark.parametrize("name", [
+    "foundation-toml.ps1", "vendor/tomlyn/Tomlyn.dll",
+    "vendor/tomlyn/LICENSE.txt", "vendor/tomlyn/provenance.json",
+])
+@pytest.mark.parametrize("mutation", ["missing", "tampered", "rebound_inventory"])
+def test_versioned_engine_payload_cannot_be_omitted_added_or_changed(engine_case, tmp_path, name, mutation):
+    binding, package, evidence, artifacts = engine_case
+    prefix = f".codex/base/foundation/{binding['foundation_engine_version']}/"
+    with zipfile.ZipFile(package) as archive:
+        entries = {path: archive.read(path) for path in archive.namelist()}
+    if binding['foundation_engine_version'] == '0.5.11':
+        entries[prefix + name] = b'Unexpected helper in historical engine'
+    elif mutation == 'tampered':
+        entries[prefix + name] = b'Changed helper bytes'
+    else:
+        entries.pop(prefix + name)
+    if mutation == 'rebound_inventory':
+        for row in evidence['engine_builds'].values():
+            row['files'] = {path[len(prefix):]: sha256(data) for path, data in entries.items()
+                            if path.startswith(prefix)}
+        evidence['evidence_body_sha256'] = body_sha256(evidence)
+    changed = tmp_path / 'changed-engine.zip'
+    with zipfile.ZipFile(changed, 'w') as archive:
+        for path, data in entries.items():
+            archive.writestr(path, data)
+    with pytest.raises(ValueError, match='built engine inventory|packaged engine files differ'):
+        validate_foundation_engine(evidence, artifacts, binding, package_path=changed)
+
+
+@pytest.mark.parametrize('test_file', ['tests/test_doctor_state.py', 'tests/test_doctor_toml.py'])
+def test_doctor_tests_are_required_only_by_their_engine_version(engine_case, test_file):
+    binding, package, evidence, artifacts = engine_case
+    selected = evidence['pytest']['selected_files']
+    if binding['foundation_engine_version'] == '0.5.12':
+        selected.remove(test_file)
+    else:
+        selected.append(test_file)
+    evidence['pytest']['selected_files_sha256'] = {path: 'a' * 64 for path in selected}
+    evidence['evidence_body_sha256'] = body_sha256(evidence)
+    with pytest.raises(ValueError, match='selected engine test contract differs'):
+        validate_foundation_engine(evidence, artifacts, binding, package_path=package)
+
+
+def test_supported_engine_version_still_requires_matching_actual_version_bytes(engine_case, tmp_path):
+    binding, package, evidence, artifacts = engine_case
+    version = binding['foundation_engine_version']
+    path = f'.codex/base/foundation/{version}/VERSION'
+    with zipfile.ZipFile(package) as archive:
+        entries = {name: archive.read(name) for name in archive.namelist()}
+    entries[path] = b'0.5.12\n' if version == '0.5.11' else b'0.5.11\n'
+    for row in evidence['engine_builds'].values():
+        row['files']['VERSION'] = sha256(entries[path])
+    evidence['evidence_body_sha256'] = body_sha256(evidence)
+    changed = tmp_path / 'changed-version.zip'
+    with zipfile.ZipFile(changed, 'w') as archive:
+        for name, data in entries.items():
+            archive.writestr(name, data)
+    with pytest.raises(ValueError, match='actual engine VERSION differs'):
         validate_foundation_engine(evidence, artifacts, binding, package_path=changed)

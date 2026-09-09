@@ -32,11 +32,11 @@ def _foundation(root: Path) -> Path:
     root.mkdir()
     script = root / "foundation.ps1"
     script.write_text("exit 0\n", encoding="utf-8")
-    (root / "VERSION").write_text("0.1.0\n", encoding="utf-8")
+    (root / "VERSION").write_text("0.5.11\n", encoding="utf-8")
     manifest = {
         "schema_version": 1,
         "protocol_version": 1,
-        "engine_version": "0.1.0",
+        "engine_version": "0.5.11",
         "network": "offline",
         "commands": [
             "apply",

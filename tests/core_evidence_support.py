@@ -13,7 +13,7 @@ from codex_base.core_acceptance import (
 
 
 def minimal_package(root: Path, binding: dict) -> Path:
-    binding.setdefault("foundation_engine_version", "test-foundation")
+    binding.setdefault("foundation_engine_version", "0.5.11")
     entries = {
         ".codex/AGENTS.md": b"Synthetic test instructions\n",
         ".codex/config.toml": b"# Synthetic config\n",

@@ -36,7 +36,7 @@ def _binding(tmp_path) -> dict[str, object]:
             "tree": "e" * 40,
             "transformation": "codex-native-independent-v2",
         },
-        "foundation_engine_version": "0.2.1",
+        "foundation_engine_version": "0.5.11",
         "foundation_engine_manifest_sha256": "f" * 64,
     }
     minimal_package(tmp_path, binding)

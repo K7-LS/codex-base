@@ -44,7 +44,8 @@ are cross-bound by SHA-256. The updater extracts and runs only the exact
 Foundation engine inside that verified ZIP.
 
 Current engine acceptance uses `foundation-engine-isolated-v1`. It verifies
-the same nine engine files in PowerShell 7 and 5.1 builds, selected engine
+the same version-specific engine files in PowerShell 7 and 5.1 builds (nine
+for 0.5.11, thirteen for 0.5.12), selected engine
 tests, and seven installation/rollback scenarios in each shell. The proof
 retains the original JUnit output and 14 command receipts, bound to the
 packaged engine. It records `FOUNDATION_ENGINE_ACCEPTANCE: PASS` while

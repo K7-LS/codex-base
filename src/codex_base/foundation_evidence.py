@@ -29,6 +29,19 @@ SELECTED_TEST_FILES = {
     "tests/test_professional_core_compat.py", "tests/test_engine_isolated_lifecycle.py",
     "tests/test_engine_acceptance_runner.py",
 }
+ENGINE_FILES_BY_VERSION = {
+    "0.5.11": frozenset(ENGINE_FILES),
+    "0.5.12": frozenset(ENGINE_FILES | {
+        "foundation-toml.ps1", "vendor/tomlyn/Tomlyn.dll",
+        "vendor/tomlyn/LICENSE.txt", "vendor/tomlyn/provenance.json",
+    }),
+}
+SELECTED_TEST_FILES_BY_VERSION = {
+    "0.5.11": frozenset(SELECTED_TEST_FILES),
+    "0.5.12": frozenset(SELECTED_TEST_FILES | {
+        "tests/test_doctor_state.py", "tests/test_doctor_toml.py",
+    }),
+}
 USER_ENVIRONMENT = {"path", "officecli_no_auto_install", "officecli_skip_update"}
 MAX_TEXT_BYTES = 4 * 1024 * 1024
 
@@ -155,6 +168,11 @@ def validate_foundation_engine(evidence: dict, artifacts: dict, binding: dict,
           "historical scope reason missing")
     _need(evidence.get("evidence_body_sha256") == body_sha256(evidence), "body hash differs")
     _need(evidence.get("engine_version") == binding.get("foundation_engine_version"), "engine version differs")
+    version = evidence.get("engine_version")
+    _need(isinstance(version, str) and version in ENGINE_FILES_BY_VERSION,
+          "unsupported engine version")
+    expected_files = ENGINE_FILES_BY_VERSION[version]
+    expected_tests = SELECTED_TEST_FILES_BY_VERSION[version]
     _user_environment_unchanged(evidence, "overall run")
     _need(_integer(evidence.get("model_requests")) and evidence["model_requests"] == 0, "unexpected model requests")
     scope = _map(evidence.get("scope"), "scope")
@@ -171,7 +189,7 @@ def validate_foundation_engine(evidence: dict, artifacts: dict, binding: dict,
     _need(set(builds) == set(syntax) == SHELLS, "both PowerShell versions are required")
     _need(evidence.get("deterministic_engine_bundle") == "PASS", "build determinism did not pass")
     files = _map(builds["ps7"], "PowerShell 7 build").get("files")
-    _hash_map(files, ENGINE_FILES, "built engine inventory")
+    _hash_map(files, expected_files, "built engine inventory")
     _need(files["engine-manifest.json"] == binding.get("foundation_engine_manifest_sha256"), "engine manifest binding differs")
     for shell in SHELLS:
         _command(syntax[shell], shell + " syntax", passed=True)
@@ -199,7 +217,7 @@ def validate_foundation_engine(evidence: dict, artifacts: dict, binding: dict,
           "selected engine tests did not pass")
     selected = tests.get("selected_files")
     _need(isinstance(selected, list) and all(isinstance(v, str) for v in selected)
-          and len(selected) == len(SELECTED_TEST_FILES) and set(selected) == SELECTED_TEST_FILES, "selected engine test contract differs")
+          and len(selected) == len(expected_tests) and set(selected) == expected_tests, "selected engine test contract differs")
     _hash_map(tests.get("selected_files_sha256"), selected, "selected test hashes")
     cases = tests.get("collected_case_ids")
     _need(isinstance(cases, list) and cases and all(isinstance(v, str) and "::" in v and v.split("::")[0] in selected for v in cases)
