@@ -4,11 +4,11 @@ from pathlib import Path
 import zipfile
 
 from codex_base.core_acceptance import body_sha256, json_bytes, sha256
-from codex_base.foundation_evidence import ENGINE_FILES, PROTOCOL, SCENARIOS, SHELLS, SOURCE_COMPONENTS, SELECTED_TEST_FILES
+from codex_base.foundation_evidence import ENGINE_FILES_BY_VERSION, PROTOCOL, SCENARIOS, SHELLS, SOURCE_COMPONENTS, SELECTED_TEST_FILES_BY_VERSION
 
 
 def fake_engine_files(version):
-    files = {name: b"Synthetic unit-test file; never execute.\n" for name in ENGINE_FILES}
+    files = {name: b"Synthetic unit-test file; never execute.\n" for name in ENGINE_FILES_BY_VERSION[version]}
     files["foundation.ps1"] = b"exit 0\n"
     files["VERSION"] = (version + "\n").encode()
     files["engine-manifest.json"] = json_bytes({
@@ -20,7 +20,7 @@ def fake_engine_files(version):
     return files
 
 
-def write_fake_engine(root: Path, version="0.1.0"):
+def write_fake_engine(root: Path, version="0.5.11"):
     for name, payload in fake_engine_files(version).items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -38,9 +38,10 @@ def synthetic_foundation(binding, package):
         artifacts[digest] = {"sha256": digest, "bytes": len(raw), "text": raw.decode("utf-8")}
         return {"path": path, "sha256": digest, "bytes": len(raw)}
     command = {"command": ["synthetic-unit-test-only"], "returncode": 0, "stdout": "synthetic", "stderr": ""}
-    selected = sorted(SELECTED_TEST_FILES)
+    selected = sorted(SELECTED_TEST_FILES_BY_VERSION[binding['foundation_engine_version']])
     ids = [f"{selected[index]}::test_{shell}_{scenario}" for shell in sorted(SHELLS) for index, scenario in enumerate(sorted(SCENARIOS))]
-    xml = ('<testsuites><testsuite tests="14" failures="0" errors="0" skipped="0">'
+    ids += [f"{path}::test_synthetic_regression" for path in selected[len(SCENARIOS):]]
+    xml = (f'<testsuites><testsuite tests="{len(ids)}" failures="0" errors="0" skipped="0">'
            + ''.join(f'<testcase classname="{i.split("::")[0][:-3].replace("/", ".")}" name="{i.split("::")[1]}"/>' for i in ids) + '</testsuite></testsuites>').encode()
     junit = artifact("synthetic-results/junit.xml", xml)
     env = {name: "e"*64 for name in ("PATH", "OFFICECLI_NO_AUTO_INSTALL", "OFFICECLI_SKIP_UPDATE")}
@@ -60,7 +61,7 @@ def synthetic_foundation(binding, package):
                    "selected_files_sha256": {name: "d"*64 for name in selected}, "collected_case_ids": ids,
                    "collection": {**command, "status": "PASS", "command": ["synthetic-unit-test-only", "--collect-only"], "stdout": "\n".join(ids)},
                    "junit_sha256": junit["sha256"], "junit_artifact": junit,
-                   "counts": {"tests": 14, "failures": 0, "errors": 0, "skipped": 0}},
+                   "counts": {"tests": len(ids), "failures": 0, "errors": 0, "skipped": 0}},
         "engine_lifecycle": {"status": "PASS", "evaluation_mode": "SYNTHETIC_HOME",
                              "required_scenarios": sorted(SCENARIOS), "shells": {}},
     }

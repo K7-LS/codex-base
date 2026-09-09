@@ -365,35 +365,41 @@ def _foundation_from_verified_package(
     ):
         raise RuntimeError("Foundation engine version binding differs")
     prefix = f".codex/base/foundation/{version}/"
-    required = {
-        "VERSION": prefix + "VERSION",
-        "foundation.ps1": prefix + "foundation.ps1",
-        "engine-manifest.json": prefix + "engine-manifest.json",
-    }
+    foundation_rows = sorted(
+        (
+            row
+            for row in package_manifest.get("files", [])
+            if isinstance(row, dict) and str(row.get("path", "")).startswith(prefix)
+        ),
+        key=lambda row: str(row["path"]),
+    )
+    if len(foundation_rows) < 3:
+        raise RuntimeError("Foundation package inventory is incomplete")
     names = archive.namelist()
     payloads: dict[str, bytes] = {}
-    for label, name in required.items():
+    for row in foundation_rows:
+        name = str(row["path"])
+        label = name[len(prefix) :]
+        if (
+            not re.fullmatch(r"[A-Za-z0-9._/-]+", label)
+            or any(segment in ("", ".", "..") for segment in label.split("/"))
+        ):
+            raise RuntimeError("Foundation package path is unsafe")
         if names.count(name) != 1:
             raise RuntimeError(f"verified Foundation file differs: {label}")
-        payloads[label] = archive.read(name)
-
-    rows = {
-        str(row.get("path")): row
-        for row in package_manifest.get("files", [])
-        if isinstance(row, dict)
-    }
-    for label, name in required.items():
-        row = rows.get(name)
-        payload = payloads[label]
+        payload = archive.read(name)
         if (
-            not isinstance(row, dict)
-            or row.get("sha256")
+            row.get("sha256")
             != hashlib.sha256(payload).hexdigest()
             or row.get("bytes") != len(payload)
         ):
             raise RuntimeError(
                 f"Foundation package row differs: {label}"
             )
+        payloads[label] = payload
+
+    if not {"VERSION", "foundation.ps1", "engine-manifest.json"} <= payloads.keys():
+        raise RuntimeError("Foundation package inventory is incomplete")
 
     if payloads["VERSION"].decode("utf-8").strip() != version:
         raise RuntimeError("Foundation VERSION differs")
@@ -420,7 +426,9 @@ def _foundation_from_verified_package(
     destination = release_dir / "verified-foundation" / version
     destination.mkdir(parents=True, exist_ok=False)
     for label, payload in payloads.items():
-        (destination / label).write_bytes(payload)
+        output = destination / label
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(payload)
     return destination / "foundation.ps1"
 
 

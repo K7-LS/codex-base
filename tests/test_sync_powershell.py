@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
 import subprocess
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -42,6 +44,7 @@ def _write_verified_release_fixture(
     *,
     unsafe_zip_path: bool = False,
     release_integrity: str = "PASS",
+    foundation_payloads: dict[str, bytes] | None = None,
 ) -> tuple[Path, str]:
     destination.mkdir()
     version = "1.2.3"
@@ -72,11 +75,16 @@ def _write_verified_release_fixture(
             ),
         }
     )
-    foundation_payloads = {
-        "VERSION": (foundation_version + "\n").encode("ascii"),
-        "foundation.ps1": foundation_script,
-        "engine-manifest.json": engine_manifest,
-    }
+    if foundation_payloads is None:
+        foundation_payloads = {
+            "VERSION": (foundation_version + "\n").encode("ascii"),
+            "foundation.ps1": foundation_script,
+            "engine-manifest.json": engine_manifest,
+        }
+    else:
+        foundation_version = foundation_payloads["VERSION"].decode("ascii").strip()
+        foundation_script = foundation_payloads["foundation.ps1"]
+        engine_manifest = foundation_payloads["engine-manifest.json"]
     lock = _json_bytes(
         {
             "schema_version": 1,
@@ -213,26 +221,28 @@ def _run_library_probe(
     policy: Path,
     probe: str,
 ) -> subprocess.CompletedProcess[str]:
-    command = (
-        f". '{script}' -PolicyPath '{policy}' -LibraryMode; "
-        + probe
-    )
-    encoded = __import__("base64").b64encode(
-        command.encode("utf-16-le")
-    ).decode("ascii")
-    return subprocess.run(
-        [
-            executable,
-            "-NoProfile",
-            "-EncodedCommand",
-            encoded,
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=False,
-        timeout=30,
-    )
+    with tempfile.TemporaryDirectory(prefix="sync-library-home-") as target_home:
+        command = (
+            f". '{script}' -PolicyPath '{policy}' "
+            f"-TargetHome '{target_home}' -LibraryMode; "
+            + probe
+        )
+        encoded = __import__("base64").b64encode(
+            command.encode("utf-16-le")
+        ).decode("ascii")
+        return subprocess.run(
+            [
+                executable,
+                "-NoProfile",
+                "-EncodedCommand",
+                encoded,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=30,
+        )
 
 
 def test_sync_powershell_runtime_is_target_neutral_and_policy_driven(
@@ -874,3 +884,100 @@ def test_sync_powershell_rejects_zip_path_traversal(
     assert "unsafe path" in (
         result.stdout + result.stderr
     ).lower()
+
+
+def _read_tree(root: Path) -> dict[str, bytes]:
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+
+def _extract_foundation_with_reference(repo_root, release_dir, output_dir):
+    path = repo_root / "tests/support/sync_base_reference.py"
+    spec = importlib.util.spec_from_file_location("sync_foundation_reference", path)
+    assert spec and spec.loader
+    reference = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reference)
+    manifest = json.loads((release_dir / "release-manifest.json").read_bytes())
+    with zipfile.ZipFile(release_dir / manifest["asset"]["name"]) as archive:
+        package = json.loads(archive.read("package-manifest.json"))
+        return reference._foundation_from_verified_package(output_dir, archive, package, manifest).parent
+
+
+def _extract_foundation_with_powershell(repo_root, executable, release_dir, tag):
+    # Exercise the existing local file-verification stage. This does not invoke
+    # the updater's network/signature stages or replace any production guards.
+    result = _run_library_probe(
+        executable,
+        repo_root / "control-skills/sync-base/tools/sync_base.ps1",
+        repo_root / "control-skills/sync-base/sync-policy.json",
+        f"Assert-LlmReleaseFiles -Directory '{release_dir}' -Tag '{tag}' | ConvertTo-Json -Compress",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return Path(json.loads(result.stdout)["foundation_path"]).parent
+
+
+@pytest.mark.parametrize("executable", POWERSHELLS)
+def test_sync_extracts_all_13_foundation_files_byte_identically(repo_root, executable, tmp_path):
+    seed, _ = _write_verified_release_fixture(tmp_path / "seed")
+    with zipfile.ZipFile(seed / "codex-base-1.2.3.zip") as archive:
+        prefix = ".codex/base/foundation/0.2.0/"
+        payloads = {name[len(prefix):]: archive.read(name) for name in archive.namelist() if name.startswith(prefix)}
+    # Opaque synthetic payloads keep this regression independent of a compiler,
+    # a downloaded DLL, an SDK or an optional local release bundle.
+    for index, name in enumerate((
+        "foundation-toml.ps1", "shared-tools.lock.json",
+        "shared-tools/officecli/k7-officecli-pdf.exe",
+        "shared-tools/officecli/officecli_csv_batch.py",
+        "shared-tools/officecli/officecli-command-policy.json",
+        "shared-tools/officecli/officecli-shim.exe",
+        "shared-tools/officecli/officecli.exe",
+        "vendor/tomlyn/LICENSE.txt", "vendor/tomlyn/provenance.json",
+        "vendor/tomlyn/Tomlyn.dll",
+    )):
+        payloads[name] = bytes([0, index, 255]) + name.encode("ascii") + b"\r\n"
+    assert len(payloads) == 13
+    release_dir, tag = _write_verified_release_fixture(tmp_path / "release", foundation_payloads=payloads)
+    production = _extract_foundation_with_powershell(repo_root, executable, release_dir, tag)
+    reference = _extract_foundation_with_reference(repo_root, release_dir, tmp_path / "reference")
+    assert _read_tree(production) == payloads
+    assert _read_tree(reference) == payloads
+
+
+@pytest.mark.parametrize("executable", POWERSHELLS)
+def test_extracted_real_foundation_helper_resolves_its_bundled_parser(repo_root, executable, tmp_path):
+    configured = os.environ.get("K7_SYNC_FOUNDATION_ENGINE_ROOT")
+    if not configured:
+        pytest.skip("Set K7_SYNC_FOUNDATION_ENGINE_ROOT to an explicit built engine bundle")
+    source = Path(configured).resolve(strict=True)
+    payloads = _read_tree(source)
+    assert len(payloads) == 13
+    assert {"foundation-toml.ps1", "vendor/tomlyn/Tomlyn.dll"} <= payloads.keys()
+    manifest = json.loads(payloads["engine-manifest.json"])
+    assert manifest["foundation_ps1_sha256"] == _sha256_bytes(payloads["foundation.ps1"])
+    release_dir, tag = _write_verified_release_fixture(tmp_path / "release", foundation_payloads=payloads)
+    production = _extract_foundation_with_powershell(repo_root, executable, release_dir, tag)
+    reference = _extract_foundation_with_reference(repo_root, release_dir, tmp_path / "reference")
+    for extracted in (production, reference):
+        assert _read_tree(extracted) == payloads
+        # Load only the TOML helper. Never run foundation.ps1, an installer,
+        # OfficeCLI or another shared tool during this delivery test.
+        result = _run_library_probe(
+            executable,
+            repo_root / "control-skills/sync-base/tools/sync_base.ps1",
+            repo_root / "control-skills/sync-base/sync-policy.json",
+            "function Throw-Foundation { param($Code,$Message); throw ($Code + ':' + $Message) }; "
+            f". '{extracted / 'foundation-toml.ps1'}'; "
+            "$requirements = @(Get-FoundationTomlRequirements -Text 'managed=true'); "
+            "$pass = Test-FoundationTomlRequirements -Text 'managed=true' -Requirements $requirements; "
+            "$assembly = [Tomlyn.Toml].Assembly; "
+            "[pscustomobject]@{ pass=$pass; parser_path=$assembly.Location; "
+            "parser_sha256=(Get-LlmSha256File $assembly.Location) } | ConvertTo-Json -Compress",
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        observed = json.loads(result.stdout)
+        assert observed["pass"] is True
+        assert Path(observed["parser_path"]).resolve() == (extracted / "vendor/tomlyn/Tomlyn.dll").resolve()
+        assert observed["parser_sha256"] == _sha256_bytes(payloads["vendor/tomlyn/Tomlyn.dll"])
