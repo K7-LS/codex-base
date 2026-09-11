@@ -250,23 +250,52 @@ def test_readonly_is_not_replaced(tmp_path):
         path.chmod(stat.S_IREAD | stat.S_IWRITE)
 
 
-def test_symlink_file_and_parent_are_rejected(tmp_path):
+def test_link_or_reparse_path_and_ancestors_are_rejected(tmp_path, record_testsuite_property):
     original_dir = tmp_path / "original"
     original_dir.mkdir()
     path = config(original_dir)
-    link = tmp_path / "link.toml"
+    before = path.read_bytes()
     directory_link = tmp_path / "linked-directory"
-    try:
+    if os.name == "nt":
+        # Junctions exercise the real Windows reparse attribute without
+        # requiring SeCreateSymbolicLinkPrivilege or Developer Mode.
+        import shutil
+        powershell = shutil.which("pwsh") or shutil.which("powershell.exe")
+        assert powershell, "PowerShell is required for the native junction fixture"
+        result = subprocess.run(
+            [powershell, "-NoProfile", "-NonInteractive", "-Command",
+             "$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path $env:K7_TEST_LINK -Target $env:K7_TEST_TARGET | Out-Null"],
+            env={**os.environ, "K7_TEST_LINK": str(directory_link), "K7_TEST_TARGET": str(original_dir)},
+            capture_output=True, timeout=20,
+        )
+        assert result.returncode == 0, "Native junction fixture creation failed"
+        assert directory_link.lstat().st_file_attributes & 0x400
+        candidates = (directory_link, directory_link / path.name)
+        record_testsuite_property("native_redirect_fixture", "Windows NTFS directory junction; not a file symlink")
+    else:
+        link = tmp_path / "link.toml"
         link.symlink_to(path)
         directory_link.symlink_to(original_dir, target_is_directory=True)
-    except OSError:
-        pytest.skip("host does not permit symlink creation; reparse guard still unit tested")
-    for item in (link, directory_link / path.name):
-        with pytest.raises(context.ReviewRequired, match="SYMLINK_OR_REPARSE_POINT"):
-            context.plan(item, True)
+        candidates = (link, directory_link / path.name)
+        record_testsuite_property("native_redirect_fixture", "POSIX file and directory symlinks")
+    try:
+        assert context.plan(path, True)["status"] == "PLAN"
+        for item in candidates:
+            with pytest.raises(context.ReviewRequired, match="SYMLINK_OR_REPARSE_POINT"):
+                context.plan(item, True)
+    finally:
+        # Remove only our link entry, never recursively traverse its target.
+        if os.name == "nt":
+            directory_link.rmdir()
+        else:
+            directory_link.unlink()
+            link.unlink()
+    assert path.read_bytes() == before
+    assert list(original_dir.iterdir()) == [path]
 
 
-def test_reparse_point_guard_with_inert_lstat(tmp_path, monkeypatch):
+@pytest.mark.parametrize("redirect_kind", ["symlink_mode", "windows_reparse_attribute"])
+def test_reparse_point_guard_with_inert_lstat(tmp_path, monkeypatch, redirect_kind):
     path = config(tmp_path)
     real_lstat = Path.lstat
 
@@ -274,8 +303,8 @@ def test_reparse_point_guard_with_inert_lstat(tmp_path, monkeypatch):
         original = real_lstat(item)
         if item == path:
             class Reparse:
-                st_mode = original.st_mode
-                st_file_attributes = 0x400
+                st_mode = stat.S_IFLNK if redirect_kind == "symlink_mode" else original.st_mode
+                st_file_attributes = 0x400 if redirect_kind == "windows_reparse_attribute" else 0
             return Reparse()
         return original
 
