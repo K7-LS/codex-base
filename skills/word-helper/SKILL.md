@@ -7,9 +7,15 @@ description: Use when нужно прочитать, изменить или п�
 
 ## Когда подключаться
 
-Любая задача с `.docx`/`.doc`, выходящая за «открой и покажи». Если просто прочитать абзац — markitdown MCP справится без скилла.
+Задача с `.docx`/`.doc`, требующая чтения, правки или проверки структуры.
+Простой абзац прочитай уже доступным средством без отдельного workflow.
 
 ## Иерархия инструментов
+
+Сначала сопоставь нужные операции реальным tools и зависимостям host.
+Ни один provider из таблицы не гарантирован поставкой базы. Проверенный
+OfficeCLI также допустим по фактической операции; не устанавливай и не обновляй
+его компоненты автоматически. Чтение, запись и рендер проверяются отдельно.
 
 | Задача | Инструмент | Заметка |
 |--------|------------|---------|
@@ -33,9 +39,9 @@ description: Use when нужно прочитать, изменить или п�
 - **Никаких брендовых LLM-палитр** на клиентских документах.
 - **Цвет ТОЛЬКО** если есть в источнике или попросил пользователь.
 
-## Правка СУЩЕСТВУЮЩЕГО docx с шапкой/полями — хирургический native custom agent plan
+## Правка готового бланка с шапкой и полями
 
-> Грунт под реальным провалом 2026-06-01 (3-4 кривых сдачи с «готово, проверено»).
+> Основание — повторные ошибки правки бланка 2026-06-01.
 > Полный разбор: `~/.codex/base/cold/memory/reference_docx_editing_failures.md`.
 
 Генерация **с нуля** обычно ок. Боль — правка **готового** файла со стилями/шапкой/
@@ -43,10 +49,12 @@ description: Use when нужно прочитать, изменить или п�
 
 1. **СНАЧАЛА дамп структуры**, НЕ заполнять вслепую: `doc.sections`, header/footer,
    якоря `w:drawing`, индексы **всех** таблиц, стили. Понять материал → потом метод.
-2. **Не пересобирать с нуля** (выбросит фирменную шапку/логотип). Править оригинал.
-3. **Плавающую шапку/логотип** (`w:drawing`, заякорен) python-docx ломает при нарезке →
-   логотип уплывает. Проще **убить и поставить inline-блоком в самый ВЕРХ** (таблица
-   2 кол.: логотип | название, без границ). Логотип — настоящий из `word/media/imageN.*`.
+2. **Не пересобирать с нуля** (можно потерять фирменную шапку/логотип).
+   Сохранить исходник, точечно править копию в разрешённом каталоге.
+3. **Плавающую шапку/логотип** сохранить вместе с anchor, media и relationships.
+   Перестройка абзаца с `w:drawing` может удалить или сдвинуть рисунок; менять только
+   нужные текстовые узлы. Перевод в inline меняет композицию бланка и требует
+   решения пользователя, если это изменение не входило в задание.
 4. **НЕ трогать табы и подчёркивания** полей «(ФИО)/(подпись)». Точечная замена
    ЗНАЧЕНИЯ внутри run, НЕ переписывать абзац целиком (это разносит выравнивание).
 5. **Пустые абзацы** (пачки 9-28 после подписей) выталкивают подвал на лишние страницы.
@@ -60,43 +68,56 @@ description: Use when нужно прочитать, изменить или п�
 
 ## Типовые задачи
 
-### Find-and-replace по всему документу
+### Точечная замена в простом текстовом абзаце
+
+Пример ниже работает с XML-элементом `w:p` и сохраняет существующие runs и их
+свойства. Новое значение получает стиль первого затронутого run; окружающий
+текст сохраняет свои стили. Это не готовая замена по всему DOCX: область надо
+выбрать по карте полей, а колонтитулы и таблицы проверить отдельно.
+Абзацы с табами, рисунками, полями, ссылками и другой нетекстовой структурой
+пример отклоняет до записи. Для них выбрать точечный метод в Word/OOXML,
+который сохраняет эту структуру; не обходить отказ удалением узлов.
+Значения с переносами строк или табами требуют отдельной обработки `w:br` /
+`w:tab`; этот текстовый пример их не создаёт.
 
 ```python
-from docx import Document
-doc = Document("input.docx")
-
-replacements = {
-    "{{ИМЯ}}": "<ФИО>",
-    "{{ДАТА}}": "07.05.2026",
-}
-
-# Ловушка: текст может быть разорван на несколько runs внутри одного paragraph
-# (Word делит при stylе-changes). Пройтись по runs наивно — пропустит совпадения.
-# Простой надёжный способ:
-for para in doc.paragraphs:
-    full = para.text
-    for old, new in replacements.items():
-        if old in full:
-            full = full.replace(old, new)
-    if full != para.text:
-        # Очистить runs и записать новый текст единым run'ом (теряется in-paragraph
-        # форматирование — приемлемый trade-off ТОЛЬКО для простых шаблонов).
-        # ⚠ ОПАСНО для бланков с табами/подчёркиваниями/выровненными полями
-        # (ФИО)/(подпись): этот паттерн разносит выравнивание. Там — точечная
-        # замена внутри нужного run, см. секцию «Правка существующего docx».
-        for run in para.runs[1:]:
-            run.text = ""
-        para.runs[0].text = full
-
-# То же для таблиц
-for table in doc.tables:
-    for row in table.rows:
-        for cell in row.cells:
-            for para in cell.paragraphs:
-                pass  # повторить логику выше
-
-doc.save("output.docx")
+def replace_text_only_paragraph(paragraph, old, new):
+    w = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    if not old:
+        raise ValueError("Пустой искомый текст")
+    if any(char in new for char in "\r\n\t"):
+        raise ValueError("Переносы и табы требуют структурной вставки")
+    if paragraph.tag != w + "p":
+        raise ValueError("Ожидался выбранный абзац w:p")
+    nodes = []
+    for child in paragraph:
+        if child.tag == w + "pPr":
+            continue
+        if child.tag != w + "r":
+            raise ValueError("Сложная структура: нужен другой точечный метод")
+        if any(n.tag not in (w + "rPr", w + "t") for n in child):
+            raise ValueError("Нетекстовые узлы: пример неприменим")
+        nodes.extend(n for n in child if n.tag == w + "t")
+    full = "".join(n.text or "" for n in nodes)
+    start = full.find(old)
+    if start < 0:
+        return 0
+    if full.find(old, start + 1) >= 0:
+        raise ValueError("Несколько совпадений: сначала уточнить область замены")
+    end = start + len(old)
+    offset = 0
+    for node in nodes:
+        text = node.text or ""
+        next_offset = offset + len(text)
+        if next_offset > start and offset < end:
+            prefix = text[:max(0, start - offset)]
+            suffix = text[max(0, end - offset):]
+            value = new if offset <= start < next_offset else ""
+            node.text = prefix + value + suffix
+            if node.text[:1].isspace() or node.text[-1:].isspace():
+                node.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        offset = next_offset
+    return 1
 ```
 
 Для шаблонной генерации с Jinja2-like синтаксисом проще `docxtpl`:
@@ -135,7 +156,7 @@ composer.save("combined.docx")
 
 ### Конвертация в Markdown
 
-Через MCP markitdown — Codex вызовет сам. Через Python:
+Через доступный MCP markitdown либо установленный Python-пакет:
 
 ```python
 import mammoth
@@ -151,11 +172,17 @@ with open("input.docx", "rb") as f:
 soffice --headless --convert-to pdf input.docx
 ```
 
-Без LibreOffice / Word — на чистой машине нет надёжного пути из Python. Скажи пользователю установить LibreOffice (User-installer без админа) или открыть файл в Word и сохранить как PDF вручную.
+Если доступного проверенного рендера нет, оставь визуальную приёмку открытой
+и назови конкретную возможность для её выполнения. Установка нового ПО
+требует разрешения; наличие Python само по себе не подтверждает точный рендер.
 
 ## Ловушки
 
-1. **Разорванный `<w:t>`** — Word делит текст внутри параграфа на несколько `runs` при изменении стилей внутри предложения. Find-replace по `run.text` пропустит совпадения. Решение: операция на уровне `paragraph.text`, потом перезапись runs (см. пример выше). Минус — теряется in-paragraph форматирование.
+1. **Разорванный `<w:t>`** — Word делит текст на несколько runs. Поиск по одному
+   `run.text` пропускает такое совпадение. Сопоставить текст с границами исходных
+   узлов и заменить только затронутый диапазон; см. ограниченный пример выше.
+   Присвоение `paragraph.text` или очистка остальных runs теряют форматирование
+   и нетекстовую структуру, поэтому не подходят для сохранения готового бланка.
 2. **Шрифты** — если в шаблоне используется PT Astra Sans / GOST шрифт, при генерации на чужой машине без шрифта Word подменит на похожий и сместит верстку. На пользовательском ПК ставить нужные шрифты заранее.
 3. **Таблицы со сложной разметкой** — `python-docx` теряет некоторые свойства cell width / borders при правке. Для табличных шаблонов лучше использовать docxtpl или править через Word MCP.
 4. **Стили (Heading 1, Heading 2)** — должны существовать в документе ДО присвоения параграфу. Иначе AttributeError. Создавать через `doc.styles.add_style()` если их нет.
@@ -180,7 +207,13 @@ soffice --headless --convert-to pdf input.docx
    живые ячейки ложно отсеиваются как «дубли» (реальный кейс 2026-07-11: read-back-верификация
    «теряла» заполненные строки таблицы, файл при этом был цел). Для проверки НАЛИЧИЯ подстрок
    (read-back verify) дедуп не нужен вовсе — дубли безвредны, читай все ячейки подряд.
-9. **⚠ `capability `document.word.read`` ДУБЛИРУЕТ текст в таблицах** (anti-patterns A3.8). На ячейке с `gridSpan`/merge рапортует «N occurrences» и вставляет replace N× в один run → задвоение, документ испорчен. **Акт ИД = одна таблица — особо опасно.** НЕ использовать для текста внутри таблиц. Надёжный путь — in-place правка `word/document.xml` через ZipArchive:
+9. **Повторная замена в merged-ячейке.** В историческом случае операция массового
+   find/replace обходила одну XML-ячейку несколько раз и вставляла текст повторно
+   (anti-patterns A3.8; акты ИД, 2026-06-05). Точное имя и версия инструмента здесь
+   не сохранены: это не дефект capability `document.word.read` и не запрет чтения.
+   До записи проверить поведение выбранного редактора на копии; после — число
+   замен и текст уникальных ячеек. Для одной точно найденной XML-подстроки возможна
+   правка `word/document.xml` в копии через ZipArchive:
    ```powershell
    Add-Type -AssemblyName System.IO.Compression
    $zip = [IO.Compression.ZipFile]::Open($docx,'Update'); $e=$zip.GetEntry('word/document.xml')
@@ -192,8 +225,11 @@ soffice --headless --convert-to pdf input.docx
        $w.Write($xml); $w.Dispose() }
    $zip.Dispose()
    ```
-   Целиться в **целый run** (`<w:t>…</w:t>`); cross-run фрагмент `.Replace` не возьмёт. Бэкап до правки. (Источник: акты ИД, <шифр> 2026-06-05.)
-9. **Метаданные python-docx** — новый docx получает `author: python-docx`, `created/modified: 2013-12-23` (артефакт библиотеки). Перед сдачей заполнять `core_properties` (author/title/created) или хотя бы знать, что дата 2013 — не баг данных. (Источник: collaborative-excel-tools, ПНР-серия.)
+   Это узкий пример: `$find` и `$replace` — заранее проверенные XML-фрагменты
+   с корректным экранированием; `w:t` — текстовый узел внутри run. Ноль или несколько
+   совпадений означают, что замена не выполнена; не объявлять успех. Cross-run
+   фрагмент `.Replace` не возьмёт. Бэкап до правки, разбор XML и read-back после неё.
+10. **Метаданные python-docx** — новый docx получает `author: python-docx`, `created/modified: 2013-12-23` (артефакт библиотеки). Перед сдачей заполнять `core_properties` (author/title/created) или хотя бы знать, что дата 2013 — не баг данных. (Источник: collaborative-excel-tools, ПНР-серия.)
 
 ## Read-back verification после генерации (§4 Karpathy)
 
@@ -201,31 +237,43 @@ soffice --headless --convert-to pdf input.docx
 
 ```python
 from docx import Document
+from docx.oxml.ns import qn
 
 # 1. Генерация
 doc.save("output.docx")
 
 # 2. Read-back verification
 verify = Document("output.docx")
-paragraphs = [p.text for p in verify.paragraphs]
+parts = [verify._element]
+for section in verify.sections:
+    parts.extend(part._element for part in (
+        section.header, section.first_page_header, section.even_page_header,
+        section.footer, section.first_page_footer, section.even_page_footer))
+# Включает таблицы/вложенные абзацы и колонтитулы; объединяет разорванные w:t.
+paragraphs = ["".join(t.text or "" for t in p.iter(qn("w:t")))
+              for part in parts for p in part.iter(qn("w:p"))]
 text_full = "\n".join(paragraphs)
 
 # Проверки:
 import re
-unfilled = re.findall(r"\{\{[^}]+\}\}", text_full)
-if unfilled:
-    raise RuntimeError(f"Незаменённые плейсхолдеры: {set(unfilled)}")
+possible_unfilled = re.findall(r"\{\{[^}]+\}\}|\[\[[^]]+\]\]", text_full)
+# Это кандидаты для сверки с картой целевых полей, не безусловный отказ:
+# буквальная строка {{name}} может быть частью неизменяемого текста.
 
 if not paragraphs or all(not p.strip() for p in paragraphs):
     raise RuntimeError("Документ пустой после сохранения")
 
 # Опционально: ожидаемые подстановки реально появились
-for key, value in expected_values.items():
+for key, value in expected_values.items():  # ожидаемые отображаемые строки
     if value not in text_full:
         raise RuntimeError(f"Значение {key}='{value}' не найдено в выводе")
 ```
 
-Для критичных шаблонов (фирменные письма <организация>, претензии, договоры) — после verify ещё спавнить агента [[word-checker]].
+Пример проверяет наличие текста, не его правильное расположение или вёрстку.
+Дополнительно сверить каждое целевое поле с картой подстановок; буквальные скобки
+шаблона не считать незаполненным полем. Сноски и другие части вне перечисленных
+областей проверять отдельно, если они участвуют в задании. После read-back —
+предусмотренные AGENTS.md проверки `word-checker`, источников и конечного рендера.
 
 ## Корпоративные шаблоны
 

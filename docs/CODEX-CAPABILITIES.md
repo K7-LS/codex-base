@@ -85,7 +85,10 @@
 | `$yandex-disk-uploader` | Use when готовый файл нужно загрузить на Яндекс Диск. | `yandex.upload` |
 
 Отдельно установлен control-skill `$sync-base`; `/sync-base` распознаётся как
-текстовый alias, а не legacy custom prompt.
+текстовый alias, а не legacy custom prompt. По запросу диагностики контекста
+он использует отдельную локальную процедуру; такая проверка не запускает
+обновление базы или модель. Поддержка настройки и работа функции проверяются
+раздельно.
 
 ## COLD-каталог
 
@@ -96,6 +99,7 @@
 - `memory/role_detection.md`
 - `memory/proxy_github.md`
 - `memory/reference_mcp.md`
+- `memory/module_contract.md`
 - `memory/reference_agents.md`
 - `memory/auto_memory_policy.md`
 - `memory/context_discipline.md`

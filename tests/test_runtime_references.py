@@ -84,6 +84,22 @@ class RuntimeReferencesTest(unittest.TestCase):
                         f"Agent root {link} is not the packaged base instruction",
                     )
 
+    def test_context_helper_and_continuity_guidance_are_delivered_exactly(self) -> None:
+        mapping = {
+            ".agents/skills/sync-base/client-context.py": "control-skills/sync-base/client-context.py",
+            ".agents/skills/sync-base/references/client-context.md": "control-skills/sync-base/references/client-context.md",
+            ".agents/skills/structured-artifacts/references/task-continuity.md": "skills/structured-artifacts/references/task-continuity.md",
+            ".agents/skills/structured-artifacts/tools/render-status.py": "skills/structured-artifacts/tools/render-status.py",
+            ".agents/skills/structured-artifacts/references/status-report.md": "skills/structured-artifacts/references/status-report.md",
+            ".agents/skills/structured-artifacts/references/status-report.example.json": "skills/structured-artifacts/references/status-report.example.json",
+            ".codex/base/cold/memory/module_contract.md": "cold/memory/module_contract.md",
+        }
+        for destination, source in mapping.items():
+            with self.subTest(destination=destination):
+                self.assertEqual(self.payload[destination], (ROOT / source).read_bytes())
+        configured = tomllib.loads(self.payload[".codex/config.toml"].decode("utf-8"))
+        self.assertNotIn("context_management", configured.get("features", {}))
+
     def test_packaged_core_fits_configured_instruction_budget(self) -> None:
         hot = self.payload[".codex/AGENTS.md"]
         self.assertEqual(hot, (ROOT / "AGENTS.md").read_bytes())

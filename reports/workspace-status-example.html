@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Учебный пример статического отчёта</title><style>
+:root{font-family:Segoe UI,Arial,sans-serif;color:#20252b;background:#f1f3f5}
+body{margin:0}main{max-width:1120px;margin:auto;padding:28px 24px 48px}
+h1{font-size:28px;margin:0 0 16px}h2{font-size:20px;margin-top:28px}
+p,li{line-height:1.55}header,.notice,article{background:white;border:1px solid #d6dce2;
+border-radius:8px;padding:18px 20px;margin:12px 0}.notice{border-left:5px solid #a66a19}
+.meta{font-size:14px;color:#4b5660}.hash{font-family:Consolas,monospace;overflow-wrap:anywhere}
+.counts{display:flex;flex-wrap:wrap;gap:8px;padding:0;list-style:none}
+.counts li{background:white;border:1px solid #d6dce2;padding:8px 10px;border-radius:5px}
+.state{font-weight:600}.failed{border-left:5px solid #a93232}
+.awaiting_decision,.needs_review{border-left:5px solid #a66a19}
+.accepted{border-left:5px solid #477056}.text{white-space:pre-wrap;overflow-wrap:anywhere}
+a{color:#15516c;overflow-wrap:anywhere}dt{font-weight:600;margin-top:12px}dd{margin:4px 0}
+.empty{color:#5a626a}footer{font-size:13px;color:#4b5660;margin-top:30px}
+@media(max-width:640px){main{padding:16px 12px}h1{font-size:23px}article{padding:14px}}
+@media print{:root{background:white}main{max-width:none;padding:0}article{break-inside:avoid}}
+</style></head><body><main>
+<header><h1>Учебный пример статического отчёта</h1><p><strong>Данные по состоянию на 2026-09-10T12:00:00+03:00</strong></p>
+<p class="meta">Сформировано: 2026-09-10T14:21:15+00:00</p><p class="hash">SHA256 проекции: d8552b02f283943b32c8e685cb4af552db5598940b1091dcbd7c896f62fe61cb</p></header>
+<aside class="notice">Статический снимок. Файлы могли измениться после формирования.
+Принятие указано по данным источника; этот отчёт не выполняет инженерную проверку и не принимает результат.</aside>
+<section><h2>Требования по состояниям</h2><ul class="counts"><li data-state="pending">Не начато: 1</li><li data-state="in_progress">В работе: 0</li><li data-state="awaiting_decision">Ожидает решения: 0</li><li data-state="needs_review">Требует проверки: 1</li><li data-state="accepted">Принято по данным источника: 0</li><li data-state="failed">Ошибка: 0</li><li data-state="skipped">Пропущено: 1</li></ul></section>
+<article class="pending" data-state="pending"><h2>EX-01</h2><p class="state">Не начато</p><p class="text">Подготовить проекцию по источникам реальной задачи.</p><dl><dt>Результат</dt><dd class="text">Не указан</dd><dt>Основания требования</dt><dd><ul><li><a href="../skills/structured-artifacts/references/status-report.md">skills/structured-artifacts/references/status-report.md</a><br><span class="hash">SHA256 74687d57773267ed3b0b83b30f8aa3c4d12f16f7d99a2e6de51d8c899602171e</span></li></ul></dd><dt>Доказательства</dt><dd><p class="empty">Не указаны</p></dd></dl></article><article class="needs_review" data-state="needs_review"><h2>EX-02</h2><p class="state">Требует проверки</p><p class="text">Проверить достаточность доказательств до принятия результата.</p><dl><dt>Результат</dt><dd class="text">Пример структуры подготовлен; инженерная приёмка не проводилась.</dd><dt>Основания требования</dt><dd><ul><li><a href="../skills/structured-artifacts/references/status-report.md">skills/structured-artifacts/references/status-report.md</a><br><span class="hash">SHA256 74687d57773267ed3b0b83b30f8aa3c4d12f16f7d99a2e6de51d8c899602171e</span></li></ul></dd><dt>Доказательства</dt><dd><p class="empty">Не указаны</p></dd></dl></article><article class="skipped" data-state="skipped"><h2>EX-03</h2><p class="state">Пропущено</p><p class="text">Автоматически вычислять процент готовности.</p><dl><dt>Результат</dt><dd class="text">Этот отчёт не вычисляет процент готовности.</dd><dt>Основания требования</dt><dd><ul><li><a href="../skills/structured-artifacts/references/status-report.md">skills/structured-artifacts/references/status-report.md</a><br><span class="hash">SHA256 74687d57773267ed3b0b83b30f8aa3c4d12f16f7d99a2e6de51d8c899602171e</span></li></ul></dd><dt>Доказательства</dt><dd><p class="empty">Не указаны</p></dd></dl></article>
+<section><h2>Открытые вопросы</h2><ul><li class="text">Какие требования и основания принятия относятся к реальной задаче?</li></ul></section><section><h2>Замечания</h2><ul><li class="text">Это учебная проекция справочника, а не отчёт о завершении работ по объекту.</li></ul></section><section><h2>Канонические источники</h2><ul><li><a href="../skills/structured-artifacts/references/status-report.md">skills/structured-artifacts/references/status-report.md</a><br><span class="hash">SHA256 74687d57773267ed3b0b83b30f8aa3c4d12f16f7d99a2e6de51d8c899602171e</span></li></ul></section>
+<footer>Состояния показаны без автоматического перевода этапов в принятые.
+При изменении источников требуется новая проверенная проекция и повторная генерация.</footer>
+</main></body></html>

@@ -1,0 +1,53 @@
+{
+  "title": "Учебный пример статического отчёта",
+  "as_of": "2026-09-10T12:00:00+03:00",
+  "canonical_sources": [
+    {
+      "path": "skills/structured-artifacts/references/status-report.md",
+      "sha256": "74687d57773267ed3b0b83b30f8aa3c4d12f16f7d99a2e6de51d8c899602171e"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "EX-01",
+      "text": "Подготовить проекцию по источникам реальной задачи.",
+      "state": "pending",
+      "sources": [
+        {
+          "path": "skills/structured-artifacts/references/status-report.md",
+          "sha256": "74687d57773267ed3b0b83b30f8aa3c4d12f16f7d99a2e6de51d8c899602171e"
+        }
+      ]
+    },
+    {
+      "id": "EX-02",
+      "text": "Проверить достаточность доказательств до принятия результата.",
+      "state": "needs_review",
+      "result": "Пример структуры подготовлен; инженерная приёмка не проводилась.",
+      "sources": [
+        {
+          "path": "skills/structured-artifacts/references/status-report.md",
+          "sha256": "74687d57773267ed3b0b83b30f8aa3c4d12f16f7d99a2e6de51d8c899602171e"
+        }
+      ]
+    },
+    {
+      "id": "EX-03",
+      "text": "Автоматически вычислять процент готовности.",
+      "state": "skipped",
+      "result": "Этот отчёт не вычисляет процент готовности.",
+      "sources": [
+        {
+          "path": "skills/structured-artifacts/references/status-report.md",
+          "sha256": "74687d57773267ed3b0b83b30f8aa3c4d12f16f7d99a2e6de51d8c899602171e"
+        }
+      ]
+    }
+  ],
+  "open_questions": [
+    "Какие требования и основания принятия относятся к реальной задаче?"
+  ],
+  "findings": [
+    "Это учебная проекция справочника, а не отчёт о завершении работ по объекту."
+  ]
+}

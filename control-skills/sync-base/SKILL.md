@@ -1,6 +1,6 @@
 ---
 name: sync-base
-description: Use only when the user explicitly asks to verify and install a Codex-base release.
+description: Use for Codex-base release updates or requested Codex context diagnostics and configuration.
 ---
 
 # sync-base
@@ -8,7 +8,13 @@ description: Use only when the user explicitly asks to verify and install a Code
 This is the native one-way Codex-base updater. `$sync-base` is the canonical
 invocation; `/sync-base` in user text is a recognized alias.
 
-Run:
+Choose the requested operation. A request to inspect context settings does not
+authorize a release installation. Read [client context](references/client-context.md)
+for local diagnostics or an explicitly requested Dynamic-context change. That
+helper reports configuration, CLI recognition and unverified runtime levels
+separately; it does not run a model. Preserve the user's model and reasoning.
+
+For a release update, run:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File `

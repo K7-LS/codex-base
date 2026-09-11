@@ -1,9 +1,10 @@
 # reference_revit_mcp — pyRevit MCP (Revit-Connector): паттерны и грабли
 
-Канонический справочник по live-работе с Autodesk Revit через MCP `Revit-Connector`
-(pyRevit Routes). Распространяется со всей базой. Локальная копия-удобство (авто-load при
-работе в папке сервера) — `~/.codex/base/mcp-servers/revit-mcp-python/AGENTS.md` (в git НЕ трекается).
-Используется агентом [[pyrevit-engineer]]. Сервер в `mcp-manifest.json` (tier optional, needs_admin).
+Исторические наблюдения по MCP `Revit-Connector` (pyRevit Routes), используемые
+агентом [[pyrevit-engineer]]. Коннектор и прежний `mcp-manifest.json` не входят
+в нынешнюю поставку ядра. Пути `mcp-servers/` ниже относятся к прежней локальной
+установке; фактический путь и состав определяй по доступному клиенту/модулю.
+Наличие этой справки не подтверждает установку сервера или активную модель Revit.
 
 ## Что это
 Мост Codex → `main.py` (FastMCP) → pyRevit Routes (REST внутри Revit, `127.0.0.1:48884`)
@@ -12,19 +13,29 @@
 list_revit_views, get_revit_view, list_families, place_family, color_splash, и др.).
 Repo: github.com/revit-mcp/revit-mcp-python (MIT). Routes в draft, БЕЗ аутентификации.
 
-## Установка/подключение (кратко; полно — post_install_note в манифесте)
-Нужны Revit + pyRevit + admin. Шаги в Revit UI (за пользователем): Extensions → «MCP Server for
+## Установка/подключение (историческая схема)
+Нужны совместимые Revit и pyRevit. Права и способ установки зависят от выбранного
+дистрибутива; не объявляй admin обязательным без проверки. Подключение выполняется
+в рамках отдельного разрешения. Исторический путь в Revit UI: Extensions → «MCP Server for
 Revit Python» → Install+Enable; Settings → Routes → on; `%APPDATA%\pyRevit\pyRevit_config.ini`
 секция `[routes]`: `server_host="127.0.0.1"`, `server_port=48884` (по умолчанию 0.0.0.0 — небезопасно);
 pyRevit Reload; проверка `http://127.0.0.1:48884/revit_mcp/status/`; restart Codex.
 
-## Инструменты не видит Codex — СНАЧАЛА ToolSearch (deferred), НЕ чинить мост
+## Инструменты не видны — проверить обнаружение и фактическую операцию
 
-Инструменты Revit-Connector приходят DEFERRED: висят в списке по имени, схемы НЕ загружены,
-вызвать нельзя. «Коннектор не появился» ≠ мост мёртв — это норма. ПЕРВЫМ делом оживить одной строкой:
-`ToolSearch query "select:capability `revit.inspect`,capability `revit.inspect`"`
-После КАЖДОГО реконнекта — это первым, затем `get_revit_status`. Строить HTTP-обход на Routes
-(POST `/execute_code/`) НЕ надо — костыль вокруг несуществующей проблемы.
+Сначала проверь список инструментов текущего host. Если он поддерживает lazy/deferred
+обнаружение, используй доступный поиск по Revit/коннектору согласно его реальной схеме.
+Capability `revit.inspect` описывает возможность чтения модели; это не имя tool и не
+селектор ToolSearch. Не придумывай вызов отсутствующего поиска и не заменяй capability
+на предполагаемое имя provider. Если инструмент уже доступен, отдельный поиск не нужен.
+
+Прочитай полученную схему и выполни разрешённую read-only проверку статуса/модели.
+`get_revit_status` — пример имени в данном коннекторе, вызывать его можно только если
+текущий host действительно предоставляет такую операцию. Обнаружение tool не доказывает
+связь с Revit или наличие активного документа. После реконнекта перепроверь доступность
+и результат. При отказе переходи к диагностике ниже; не меняй мост по одному лишь
+отсутствию схемы. Прямой HTTP допустим для отдельной разрешённой диагностики, а выполнение
+кода через Routes требует своей проверки операции и границ записи, а не обхода отказа.
 
 ## "Failed to connect" у uv-серверов — команда `uv run --with` рвёт connect-таймаут
 
@@ -33,11 +44,16 @@ pyRevit Reload; проверка `http://127.0.0.1:48884/revit_mcp/status/`; res
 при каждом старте резолвит окружение (~6с, докачивает `--with`-оверлей) → дольше connect-таймаута.
 Фикс — прямой запуск из venv (mcp[cli] уже в `.venv`, `main.py` имеет `__main__`→`mcp.run(stdio)`):
 ```
-Codex mcp remove Revit-Connector -s user
-Codex mcp add Revit-Connector -s user -- <install_dir>\.venv\Scripts\python.exe <install_dir>\main.py
+codex mcp remove Revit-Connector
+codex mcp add Revit-Connector -- "<install_dir>\.venv\Scripts\python.exe" "<install_dir>\main.py"
 ```
+Синтаксис проверен по `mcp add --help` / `mcp remove --help` CLI 0.153.1;
+у этих команд нет `-s user`. Пример изменяет регистрацию MCP, поэтому не
+исполняется в ходе read-only диагностики. Сначала проверь фактическую запись
+и разрешение на её изменение; не удаляй рабочее подключение ради проверки.
 Старт <1с, handshake сразу (тест: пайп initialize-JSON в эту команду → result за ~1с). Тот же паттерн
-у рабочего autocad-mcp (прямой venv python, не uvx). После правки — реконнект/рестарт, затем ToolSearch select.
+у рабочего autocad-mcp (прямой venv python, не uvx). После разрешённой правки — реконнект/рестарт,
+затем обнаружение инструментов и проверка фактической операции, как описано выше.
 
 ## Подключение мертво / команды виснут — диагностика отказа (прокси / IPv6 / Home / 2 копии)
 

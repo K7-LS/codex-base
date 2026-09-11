@@ -7,7 +7,7 @@ Native, progressively loaded base targeting `codex-cli 0.153.1`.
 - HOT: compact global `AGENTS.md` on every new session.
 - WARM: discovery metadata for 16 domain agents, 39 capability skills, and
   one explicit control skill (`sync-base`).
-- COLD: full skill instructions, scripts, templates, 19 reference files,
+- COLD: full skill instructions, scripts, templates, 21 reference files,
   3 named chains, and 3 command references loaded only after routing.
 
 The base does not set a model or reasoning level. Simple conversation must not
