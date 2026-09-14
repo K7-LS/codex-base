@@ -98,7 +98,10 @@ def main() -> int:
 {_table(skill_rows)}
 
 Отдельно установлен control-skill `$sync-base`; `/sync-base` распознаётся как
-текстовый alias, а не legacy custom prompt.
+текстовый alias, а не legacy custom prompt. По запросу диагностики контекста
+он использует отдельную локальную процедуру; такая проверка не запускает
+обновление базы или модель. Поддержка настройки и работа функции проверяются
+раздельно.
 
 ## COLD-каталог
 
@@ -143,8 +146,13 @@ Foundation хранит собственные transaction state и backups от
 
 - SessionStart: только анонимный `GET` к `api.github.com`, TTL 24 часа,
   без вывода при отсутствии обновления.
-- `$sync-base`: только `gh release list`, `verify`, `download`,
+- `$sync-base`, обновление: только `gh release list`, `verify`, `download`,
   `verify-asset`.
+- Диагностика контекста: локальное чтение выбранных полей TOML; адресный
+  `features list` запускается только с явно указанным CLI в пустом home.
+  Включение/отключение выполняется по запросу пользователя с резервной копией
+  и проверкой остальных значений. Модельные запросы не выполняются; инструкция
+  находится в `control-skills/sync-base/references/client-context.md` исходника.
 - Foundation engine: полностью offline, сетевого кода нет.
 - Consumer upload, push, feedback, telemetry и session-report отсутствуют.
 

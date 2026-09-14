@@ -100,7 +100,7 @@ def test_cold_catalog_is_complete_and_outside_discovery(repo_root):
     """Catches a referenced method that was omitted from the release payload."""
     cold = json.loads((repo_root / "catalog" / "cold.json").read_text(encoding="utf-8"))
 
-    assert len(cold["memory"]) == 20
+    assert len(cold["memory"]) == 21
     assert len(cold["chains"]) == 3
     assert len(cold["commands"]) == 3
     for group in ("memory", "chains", "commands"):

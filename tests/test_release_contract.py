@@ -64,7 +64,7 @@ def test_component_lock_covers_all_vendored_runtime_components(repo_root):
     assert len(lock["components"]["agents"]) == 16
     assert len(lock["components"]["skills"]) == 39
     assert len(lock["components"]["control_skills"]) == 1
-    assert len(lock["components"]["cold"]) == 26
+    assert len(lock["components"]["cold"]) == 27
     assert len(lock["components"]["runtime"]) == 1
     runtime_paths = {
         row["path"]

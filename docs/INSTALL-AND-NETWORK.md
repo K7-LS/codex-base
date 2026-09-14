@@ -30,8 +30,13 @@ Foundation хранит собственные transaction state и backups от
 
 - SessionStart: только анонимный `GET` к `api.github.com`, TTL 24 часа,
   без вывода при отсутствии обновления.
-- `$sync-base`: только `gh release list`, `verify`, `download`,
+- `$sync-base`, обновление: только `gh release list`, `verify`, `download`,
   `verify-asset`.
+- Диагностика контекста: локальное чтение выбранных полей TOML; адресный
+  `features list` запускается только с явно указанным CLI в пустом home.
+  Включение/отключение выполняется по запросу пользователя с резервной копией
+  и проверкой остальных значений. Модельные запросы не выполняются; инструкция
+  находится в `control-skills/sync-base/references/client-context.md` исходника.
 - Foundation engine: полностью offline, сетевого кода нет.
 - Consumer upload, push, feedback, telemetry и session-report отсутствуют.
 
@@ -71,9 +76,9 @@ pwsh -NoProfile -File $Foundation `
 
 | Метрика | Legacy hub | Candidate |
 | --- | ---: | ---: |
-| Base-controlled bytes | 72,077 | 21,602 |
-| Оценка tokens `ceil(bytes/3)` | 24,026 | 7,201 |
-| Сокращение | — | 70.03% |
+| Base-controlled bytes | 72,077 | 21,612 |
+| Оценка tokens `ceil(bytes/3)` | 24,026 | 7,204 |
+| Сокращение | — | 70.02% |
 
 Это оценка статического startup/discovery-контекста, а не биллинг провайдера.
 Этот отчёт не запускает matched A/B и не доказывает снижение total input

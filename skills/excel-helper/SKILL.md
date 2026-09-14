@@ -260,7 +260,11 @@ wb.save("highlighted.xlsx")
 6. **Объединённые ячейки (merged)** — значение хранится только в верхней-левой ячейке диапазона; остальные `None`. Для итерации `for row in ws.iter_rows()` придётся unmerge или пробрасывать значение из якоря.
 7. **Большие файлы** — `openpyxl` читает медленно (~1 сек на 10к строк). Для >100к строк — `pandas.read_excel` с движком `openpyxl` или `polars`.
 8. **Запись через openpyxl стирает условное форматирование и сводные**, если их не загрузить с `keep_vba=True` и не пересохранить аккуратно. Лучше править через excel-mcp.
-9. **excel MCP read на больших таблицах → «exceeds maximum tokens».** `capability `spreadsheet.read`` раздувает JSON метаданными валидации/формул и упирается в token-лимит (наблюдалось **64–74K токенов на один лист**). Подтверждено независимо ≥3 раза (замечания Химки, серия ПНР+ВОР <объект-A>, СОТ). **Правило: >50 строк → читать через openpyxl напрямую или PowerShell + `ConvertFrom-Json`, НЕ через MCP read.** MCP read оставлять для малых диапазонов (<50×10), где он удобнее.
+9. **Большой ответ excel MCP read → «exceeds maximum tokens».** В прежних прогонах
+   ответ выбранного MCP с метаданными достигал **64–74K токенов на лист**. Это
+   наблюдение о конкретном способе чтения, не свойство capability `spreadsheet.read`.
+   Ограничивать диапазон и состав ответа; для большого листа использовать доступное
+   чтение через openpyxl/другой подходящий инструмент без лишних метаданных.
 
 ```powershell
 # Большой лист через openpyxl (UTF-8 stdout обязательно):
@@ -272,11 +276,13 @@ for r, row in enumerate(ws.iter_rows(values_only=True), 1):
     if any(c is not None for c in row): print(f'{r}:', row)
 "@
 ```
-10. **Формулы через excel MCP — только `apply_formula`, НЕ `write_data_to_excel`.**
-    Если записать `=J96*0.2` через `write_data_to_excel`, оно сохранится как **строка-текст**,
-    не формула. Использовать `capability `spreadsheet.read``. И ещё — **RU-запятая ломает
-    формулу:** `=J96*0,2` (запятая) не парсится как формула → писать с **точкой**
-    (`=J96*0.2`), Excel сам отобразит по локали. (Источник: muzey-spartak, <шифр>.)
+10. **Формулу записывать как формулу.** В прежнем excel MCP `write_data_to_excel`
+    сохранял `=J96*0.2` как текст; использовался `apply_formula`. Это имена того
+    provider, а не универсальный API. Выбрать реальную операцию с capability
+    `spreadsheet.write`, прочитать её схему и проверить тип ячейки после записи.
+    Для OOXML/API с инвариантным синтаксисом использовать точку (`=J96*0.2`);
+    локаль UI не задаёт синтаксис API. Если инструмент требует R1C1 или локализованную
+    формулу, следовать его контракту и проверить ссылки и вычисленный результат.
 11. **Старый `.xls` (BIFF) — читать `xlrd`, не openpyxl.** openpyxl работает только с
     `.xlsx` (OOXML). Для `.xls` (Excel 97-2003) — `xlrd` (`import xlrd; xlrd.open_workbook(...)`).
     Источники спецификаций нередко приходят в старом `.xls`.
@@ -293,10 +299,10 @@ for r, row in enumerate(ws.iter_rows(values_only=True), 1):
     xlsx с PQ/динамическими массивами/LAMBDA в них ломаются/не считаются. Если файл
     заказчика на этих движках — проверить, нет ли PQ/LAMBDA; критичную логику дублировать
     обычными формулами. M365 — тянет; OnlyOffice — нет. (Источник: collaborative-excel-tools, <шифр>.)
-15. **`openpyxl`/excel MCP при `save()` молча УДАЛЯЕТ drawing-слой (картинки/лого).**
-    Любая запись в xlsx с встроенными изображениями через `Workbook.save()` или
-    `capability `spreadsheet.read`` → картинки исчезают (реальный кейс: пропало 30+ лого
-    из каталога вендоров). **Pre-flight:** до записи проверить ZIP-разведкой наличие
+15. **Сохранение книги может потерять drawing-слой (картинки/лого).** В прежнем
+    случае после записи пропало 30+ логотипов из каталога вендоров; это не операция
+    чтения и не универсальный дефект capability. Совместимость редактора с нужными
+    drawings проверить на копии. **Pre-flight:** до записи проверить ZIP-разведкой наличие
     `xl/media/*` и `xl/drawings/*.xml`:
     ```powershell
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -304,10 +310,10 @@ for r, row in enumerate(ws.iter_rows(values_only=True), 1):
     $media = @($zip.Entries | Where-Object { $_.FullName -like "xl/media/*" }).Count
     $zip.Dispose(); Write-Host "media images: $media"
     ```
-    Если drawings есть — НЕ писать через MCP/`save()`. Варианты: (а) запись через **ZIP-хирургию**
+    Если сохранность drawings выбранным редактором не подтверждена, варианты: (а) **ZIP-хирургия**
     (правка `xl/media/`, `xl/drawings/drawingN.xml`, `_rels`, `[Content_Types].xml` напрямую в
-    архиве в режиме Update); (б) правки делает пользователь в Excel. Post-verify: media-count
-    ПОСЛЕ == media-count ДО (+ ровно новые). Поле `descr` в drawing.xml Excel не обновляет —
+    архиве в режиме Update); (б) подходящая операция в Excel. Post-verify: media-count
+    ПОСЛЕ == media-count ДО (+ ровно новые), сохранены якоря и relationships. Поле `descr` в drawing.xml Excel не обновляет —
     сверять по SHA-256 содержимого, не по метаданным. (Источник: feedback vendor-logo-inserter.)
 16. **`delete_rows()` на листе с ВЕРТИКАЛЬНЫМИ merge молча теряет данные.** openpyxl при
     `ws.delete_rows()` пытается сдвинуть merge-диапазоны и при высокой плотности
