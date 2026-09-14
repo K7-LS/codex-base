@@ -420,22 +420,170 @@ def test_windows_permission_copy_retains_dacl(tmp_path, protected):
                     position += int.from_bytes(value[position + 2:position + 4], "little")
         return bytes(value)
 
-    if protected:
-        original = descriptor(path)
-        buffer = ctypes.create_string_buffer(original)
-        present, defaulted, dacl = wintypes.BOOL(), wintypes.BOOL(), ctypes.c_void_p()
-        api.GetSecurityDescriptorDacl.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.BOOL),
-                                                ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(wintypes.BOOL)]
-        assert api.GetSecurityDescriptorDacl(buffer, ctypes.byref(present), ctypes.byref(dacl), ctypes.byref(defaulted))
-        api.SetNamedSecurityInfoW.argtypes = [wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD,
-                                            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
-        assert api.SetNamedSecurityInfoW(str(path), 1, 4 | 0x80000000, None, None, dacl, None) == 0
-        assert int.from_bytes(descriptor(path)[2:4], "little") & 0x1000
+    # Initialize the ACL explicitly in both cases before taking the baseline,
+    # avoiding OS-dependent normalization of the temporary folder's inherited ACL.
+    original = descriptor(path)
+    buffer = ctypes.create_string_buffer(original)
+    present, defaulted, dacl = wintypes.BOOL(), wintypes.BOOL(), ctypes.c_void_p()
+    api.GetSecurityDescriptorDacl.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.BOOL),
+                                            ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(wintypes.BOOL)]
+    assert api.GetSecurityDescriptorDacl(buffer, ctypes.byref(present), ctypes.byref(dacl), ctypes.byref(defaulted))
+    api.SetNamedSecurityInfoW.argtypes = [wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD,
+                                        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+    set_flags = 4 | (0x80000000 if protected else 0x20000000)
+    assert api.SetNamedSecurityInfoW(str(path), 1, set_flags, None, None, dacl, None) == 0
+    assert bool(int.from_bytes(descriptor(path)[2:4], "little") & 0x1000) == protected
     before = semantic_descriptor(path)
     result = context.apply(path, context.sha(path.read_bytes()), True)
     assert semantic_descriptor(path) == before
     assert semantic_descriptor(Path(result["backup_receipt"])) == before
     assert all(semantic_descriptor(item) == before for item in tmp_path.glob("*.bak"))
+
+
+def legacy_dacl_retains_access(before, after):
+    """Compare fixture SDs, allowing only the observed whole-list ALLOW repeat."""
+    def parts(raw):
+        if len(raw) < 20 or raw[0] != 1:
+            raise ValueError("invalid security descriptor")
+        control = int.from_bytes(raw[2:4], "little")
+        if not control & 0x8000:
+            raise ValueError("self-relative descriptor required")
+
+        def at(offset, size):
+            if offset < 20 or size < 0 or offset + size > len(raw):
+                raise ValueError("invalid descriptor offset")
+            return raw[offset:offset + size]
+
+        def sid(offset):
+            return None if not offset else at(offset, 8 + 4 * at(offset, 8)[1])
+
+        owner, group, sacl, dacl = [int.from_bytes(raw[pos:pos + 4], "little") for pos in (4, 8, 12, 16)]
+        sacl_bytes = None if not sacl else at(sacl, int.from_bytes(at(sacl, 8)[2:4], "little"))
+        acl_meta, aces = None, None
+        if dacl:
+            header = at(dacl, 8)
+            acl = at(dacl, int.from_bytes(header[2:4], "little"))
+            if len(acl) < 8:
+                raise ValueError("invalid ACL size")
+            position, aces = 8, []
+            for _ in range(int.from_bytes(header[4:6], "little")):
+                size = int.from_bytes(acl[position + 2:position + 4], "little")
+                if size < 4 or position + size > len(acl):
+                    raise ValueError("invalid ACE size")
+                ace = bytearray(acl[position:position + size])
+                if not control & 0x1000:
+                    ace[1] &= ~0x10  # Only inherited provenance on unprotected DACLs.
+                aces.append(bytes(ace))
+                position += size
+            acl_meta = (header[:2], header[6:8], acl[position:])
+            aces = tuple(aces)
+        return (raw[:2], control & ~0x0400, sid(owner), sid(group), sacl_bytes, acl_meta), aces
+
+    try:
+        old, old_aces = parts(before)
+        new, new_aces = parts(after)
+    except ValueError:
+        return False
+    if old != new:
+        return False
+    if old_aces == new_aces:
+        return True
+    return (not old[1] & 0x1000 and bool(old_aces)
+            # Ordinary ACCESS_ALLOWED_ACE with a complete SID, not an object/callback ACE.
+            and all(len(ace) >= 16 and ace[0] == 0 and ace[8] == 1
+                    and len(ace) == 16 + 4 * ace[9] for ace in old_aces)
+            and new_aces == old_aces * 2)
+
+
+@windows_only
+def test_windows_legacy_inherited_dacl_retains_access(tmp_path):
+    import ctypes
+    from ctypes import wintypes
+    path = config(tmp_path)  # Keep the original, uninitialized temporary-folder ACL.
+    api = ctypes.WinDLL("advapi32", use_last_error=True)
+    api.GetFileSecurityW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_void_p,
+                                    wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+
+    def descriptor(item):
+        needed = wintypes.DWORD()
+        api.GetFileSecurityW(str(item), 7, None, 0, ctypes.byref(needed))
+        buffer = ctypes.create_string_buffer(needed.value)
+        assert api.GetFileSecurityW(str(item), 7, buffer, needed.value, ctypes.byref(needed))
+        return buffer.raw
+
+    before = descriptor(path)
+    result = context.apply(path, context.sha(path.read_bytes()), True)
+    for item in [path, Path(result["backup_receipt"]), *tmp_path.glob("*.bak")]:
+        after = descriptor(item)
+        assert legacy_dacl_retains_access(before, after), (item.name, before.hex(), after.hex())
+
+
+def synthetic_legacy_dacl(aces=None, *, control=0x8004, owner=None, group=None, null=False):
+    """Small self-relative fixture with two distinct ordinary ALLOW entries."""
+    import struct
+    owner = bytes.fromhex("010100000000000512000000") if owner is None else owner
+    group = bytes.fromhex("01020000000000052000000020020000") if group is None else group
+    if aces is None:
+        aces = [struct.pack("<BBHI", 0, 0x10, 8 + len(sid), mask) + sid
+                for sid, mask in ((owner, 0x001F01FF), (group, 0x00120089))]
+    acl = b"" if null else struct.pack("<BBHHH", 2, 0, 8 + sum(map(len, aces)), len(aces), 0) + b"".join(aces)
+    dacl_offset = 0 if null else 20 + len(owner) + len(group)
+    return struct.pack("<BBHIIII", 1, 0, control, 20, 20 + len(owner), 0, dacl_offset) + owner + group + acl
+
+
+def test_legacy_dacl_comparison_accepts_only_known_normalization():
+    before = synthetic_legacy_dacl()
+    offset = int.from_bytes(before[16:20], "little")
+    first_size = int.from_bytes(before[offset + 10:offset + 12], "little")
+    aces = [before[offset + 8:offset + 8 + first_size], before[offset + 8 + first_size:]]
+    assert legacy_dacl_retains_access(before, before)
+    doubled = bytearray(synthetic_legacy_dacl(aces * 2, control=0x8404))
+    position = offset + 8
+    for ace in aces * 2:
+        doubled[position + 1] &= ~0x10
+        position += len(ace)
+    assert legacy_dacl_retains_access(before, bytes(doubled))
+    for descriptor in (synthetic_legacy_dacl(aces, control=0x9004),
+                       synthetic_legacy_dacl([]), synthetic_legacy_dacl(null=True)):
+        assert legacy_dacl_retains_access(descriptor, descriptor)
+
+
+@pytest.mark.parametrize("change", [
+    "mask", "sid", "deny", "flags", "protection", "owner", "group", "extra_ace",
+    "triple", "order", "null_to_empty", "present", "deny_repeat", "protected_repeat",
+    "partial_repeat", "protected_inherited_flag", "other_control", "acl_revision",
+])
+def test_legacy_dacl_comparison_rejects_changed_access(change):
+    before = synthetic_legacy_dacl()
+    offset = int.from_bytes(before[16:20], "little")
+    first_size = int.from_bytes(before[offset + 10:offset + 12], "little")
+    aces = [before[offset + 8:offset + 8 + first_size], before[offset + 8 + first_size:]]
+    after = bytearray(before)
+    mutations = {"mask": offset + 12, "sid": offset + 24, "deny": offset + 8,
+                 "flags": offset + 9, "owner": 28, "group": 44, "present": 2,
+                 "acl_revision": offset, "other_control": 3}
+    if change in mutations:
+        after[mutations[change]] ^= 4 if change == "present" else 1
+    elif change == "protection":
+        after[3] ^= 0x10
+    elif change in ("extra_ace", "partial_repeat", "triple", "order"):
+        extra = bytearray(aces[0])
+        extra[4] ^= 2
+        changed = {"extra_ace": aces + [bytes(extra)], "partial_repeat": aces + [aces[0]],
+                   "triple": aces * 3, "order": aces[::-1]}[change]
+        after = synthetic_legacy_dacl(changed)
+    elif change == "null_to_empty":
+        before, after = synthetic_legacy_dacl(null=True), synthetic_legacy_dacl([])
+    elif change == "deny_repeat":
+        aces[0] = b"\x01" + aces[0][1:]
+        before, after = synthetic_legacy_dacl(aces), synthetic_legacy_dacl(aces * 2)
+    elif change == "protected_repeat":
+        before, after = synthetic_legacy_dacl(aces, control=0x9004), synthetic_legacy_dacl(aces * 2, control=0x9004)
+    elif change == "protected_inherited_flag":
+        before = synthetic_legacy_dacl(aces, control=0x9004)
+        after = bytearray(before)
+        after[offset + 9] ^= 0x10
+    assert not legacy_dacl_retains_access(before, bytes(after)), change
 
 
 @windows_only
