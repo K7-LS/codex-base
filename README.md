@@ -25,6 +25,13 @@ is silent when there is no update. Installation is explicit through
 No consumer feedback, telemetry, session report, credential, or local-change
 upload exists.
 
+Historical updaters that require `FOUNDATION_SYNTHETIC=PASS` and `MATCHED_AB=PASS`
+cannot consume the professional-core evidence contract. The explicit
+[hub migration package](migration/README.md) provides a separately verified
+transition without rewriting verdicts or changing the installed policy first.
+It requires a published migration release; local candidates do not authorize
+workstation installation.
+
 ## Build and offline acceptance
 
 ```powershell
