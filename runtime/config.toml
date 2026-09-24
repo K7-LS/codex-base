@@ -1,6 +1,6 @@
 # Managed Codex-base defaults; the package declares the supported CLI version.
 # Model, reasoning effort, providers, MCP and plugins remain user/host-owned.
-project_doc_max_bytes = 32768
+project_doc_max_bytes = 34816
 check_for_update_on_startup = false
 
 [features]

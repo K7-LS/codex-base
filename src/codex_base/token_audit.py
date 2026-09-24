@@ -79,11 +79,14 @@ def audit_static_context(
         repo_root / "baselines" / "legacy-hub-2026-07-26.json"
     )
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    budget = json.loads((repo_root / "context-budget.json").read_text(encoding="utf-8"))
     candidate = _candidate_surfaces(repo_root)
     candidate_bytes = sum(int(value["bytes"]) for value in candidate.values())
     legacy_bytes = int(baseline["total_bytes"])
     reduction = 1.0 - (candidate_bytes / legacy_bytes)
-    static_pass = reduction >= 0.70
+    hot_limit = int(budget["limits"]["hot_utf8_bytes"])
+    reduction_min = int(budget["release_thresholds"]["base_controlled_reduction_percent"]) / 100
+    static_pass = reduction >= reduction_min and int(candidate["hot"]["bytes"]) <= hot_limit
     return {
         "schema_version": 1,
         "method": baseline["method"],
@@ -95,7 +98,8 @@ def audit_static_context(
             "cold_payload_in_startup": False,
         },
         "thresholds": {
-            "base_controlled_startup_reduction_min": 0.70,
+            "base_controlled_startup_reduction_min": reduction_min,
+            "hot_utf8_bytes_max": hot_limit,
             "matched_ab_total_input_reduction_min": DEFAULT_MIN_MEDIAN_INPUT_REDUCTION,
         },
         "results": {

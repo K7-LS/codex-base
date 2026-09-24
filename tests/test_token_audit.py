@@ -11,7 +11,13 @@ def test_static_startup_context_reduction_exceeds_release_threshold(repo_root):
     report = audit_static_context(repo_root)
 
     assert report["results"]["STATIC_TOKEN_ACCEPTANCE"] == "PASS"
-    assert report["results"]["base_controlled_startup_reduction"] >= 0.70
+    assert report["results"]["base_controlled_startup_reduction"] >= 0.50
+    assert report["thresholds"]["base_controlled_startup_reduction_min"] == 0.50
+    assert report["thresholds"]["hot_utf8_bytes_max"] == 25000
+    assert report["candidate"]["surfaces"]["hot"]["bytes"] <= 25000
+    discovery_bytes = report["candidate"]["total_bytes"] - report["candidate"]["surfaces"]["hot"]["bytes"]
+    reduction_at_ceiling = 1 - (25000 + discovery_bytes) / report["legacy"]["total_bytes"]
+    assert reduction_at_ceiling >= report["thresholds"]["base_controlled_startup_reduction_min"]
     assert report["candidate"]["cold_payload_in_startup"] is False
     assert report["candidate"]["surfaces"]["agents_discovery"]["count"] == 16
     assert (

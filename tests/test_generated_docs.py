@@ -23,6 +23,7 @@ class GeneratedDocsTest(unittest.TestCase):
             for name in ("catalog", "baselines", "agents"):
                 shutil.copytree(ROOT / name, root / name)
             shutil.copy2(ROOT / "AGENTS.md", root / "AGENTS.md")
+            shutil.copy2(ROOT / "context-budget.json", root / "context-budget.json")
             for folder in ("skills", "control-skills"):
                 for path in (ROOT / folder).glob("*/SKILL.md"):
                     target = root / path.relative_to(ROOT)
