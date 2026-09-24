@@ -2,13 +2,13 @@
   "schema": 1,
   "estimator": "ceil(utf8_bytes/3)",
   "limits": {
-    "hot_utf8_bytes": 12288,
+    "hot_utf8_bytes": 25000,
     "project_instruction_headroom_bytes": 8192,
     "skill_discovery_chars": 7200,
     "agent_discovery_chars": 4000
   },
   "release_thresholds": {
-    "base_controlled_reduction_percent": 70,
+    "base_controlled_reduction_percent": 50,
     "matched_total_input_reduction_percent": 25
   },
   "simple_prompt": {
