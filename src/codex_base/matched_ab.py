@@ -13,7 +13,6 @@ from typing import Any, Iterable
 from .acceptance import evidence_body_sha256
 
 
-SUPPORTED_CLIENT = "0.146.0-alpha.3.1"
 MODEL = "gpt-5.6-terra"
 REASONING_EFFORT = "low"
 MAX_INPUT_TOKENS = 100_000
@@ -448,8 +447,10 @@ def summarize_results(
     ]
     if actual != expected:
         raise ValueError("matched A/B results do not match the approved matrix")
-    if client_version != SUPPORTED_CLIENT:
-        raise ValueError("matched A/B client version is unsupported")
+    if not isinstance(client_version, str) or re.fullmatch(
+        r"[0-9]+(?:\.[0-9]+){2,7}(?:-[0-9A-Za-z.-]+)?", client_version
+    ) is None:
+        raise ValueError("matched A/B client version observation is invalid")
     for digest in (
         legacy_surface_sha256,
         candidate_surface_sha256,
@@ -652,8 +653,10 @@ def _validate_direct_evidence_for_inheritance(
         and evidence.get("MATCHED_AB") == "PASS"
         and evidence.get("calls_authorized") == 4
         and evidence.get("calls_completed") == 4
-        and evidence.get("client")
-        == {"id": "codex-cli", "version": SUPPORTED_CLIENT}
+        and isinstance(evidence.get("client"), dict)
+        and evidence["client"].get("id") == "codex-cli"
+        and isinstance(evidence["client"].get("version"), str)
+        and re.fullmatch(r"[0-9]+(?:\.[0-9]+){2,7}(?:-[0-9A-Za-z.-]+)?", evidence["client"]["version"]) is not None
         and evidence.get("model") == MODEL
         and evidence.get("reasoning_effort") == REASONING_EFFORT
         and package_record

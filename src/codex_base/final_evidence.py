@@ -10,7 +10,7 @@ from .foundation_evidence import validate_foundation_engine
 from .canary import EXPECTED_PHASES
 from .core_acceptance import (
     ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON,
-    package_client, package_discovery, package_foundation_sha256, validate_core_behavior,
+    client_matches_package, package_client, package_discovery, package_foundation_sha256, validate_core_behavior,
     validate_current_wire_keys,
 )
 from .matched_ab import (
@@ -22,7 +22,6 @@ from .matched_ab import (
     validate_matched_ab_benchmark,
     MODEL,
     REASONING_EFFORT,
-    SUPPORTED_CLIENT,
 )
 
 
@@ -195,11 +194,10 @@ def _validate_matched(
         matched.get("schema_version") == MATCHED_AB_SCHEMA_VERSION
         and matched.get("MATCHED_AB") == "PASS"
         and (direct_calls or inherited_calls)
-        and client
-        == {
-            "id": "codex-cli",
-            "version": SUPPORTED_CLIENT,
-        }
+        and isinstance(client, dict)
+        and client.get("id") == "codex-cli"
+        and isinstance(client.get("version"), str)
+        and client.get("version") != ""
         and matched.get("model") == MODEL
         and matched.get("reasoning_effort") == REASONING_EFFORT
         and isinstance(package, dict)
@@ -247,7 +245,7 @@ def _validate_canary(
         and canary.get("model_requests") == 0
         and canary.get("phases") == EXPECTED_PHASES
         and canary.get("discovery") == expected_discovery
-        and (package_path is None or (canary.get("client") == package_client(package_path)
+        and (package_path is None or (client_matches_package(canary.get("client", {}), package_client(package_path))
                                      and canary.get("canary_protocol") == "package-bound-v1"))
         and isinstance(canary.get("rollback"), dict)
         and canary["rollback"].get("byte_identical") is True

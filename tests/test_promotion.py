@@ -16,7 +16,7 @@ from codex_base.promotion import (
     create_package_acceptance,
     promote_candidate,
 )
-from codex_base.release import SUPPORTED_CODEX_CLIENT, bind_acceptance_evidence, build_release
+from codex_base.release import CLIENT_PROTOCOL_SENTINEL, bind_acceptance_evidence, build_release
 from core_evidence_support import synthetic_core, synthetic_canary, add_synthetic_contract
 from foundation_evidence_support import write_fake_engine, synthetic_foundation
 from codex_base.core_acceptance import ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON
@@ -235,7 +235,7 @@ def test_codex_package_acceptance_matches_employee_installer_contract(
     assert acceptance["package_acceptance"] == "PASS"
     assert acceptance["client"] == {
         "id": "codex-cli",
-        "supported_version": SUPPORTED_CODEX_CLIENT,
+        "supported_version": CLIENT_PROTOCOL_SENTINEL,
     }
     assert acceptance["asset"]["sha256"] == stable.zip_sha256
     assert acceptance["immutable_release"] is True

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from codex_base.release import (
-    SUPPORTED_CODEX_CLIENT,
+    CLIENT_PROTOCOL_SENTINEL,
     _build_desired_state,
     assert_clean_git_source,
     build_component_lock,
@@ -116,7 +116,7 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
     assert _sha256(first.zip_path) == _sha256(second.zip_path)
     assert first.manifest == second.manifest
     assert first.manifest["client"]["supported_version"] == (
-        SUPPORTED_CODEX_CLIENT
+        CLIENT_PROTOCOL_SENTINEL
     )
     assert "supported_codex_client" not in first.manifest
     assert first.manifest["asset"]["sha256"] == _sha256(first.zip_path)
@@ -192,7 +192,7 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
         )
         assert package_manifest["client"] == {
             "id": "codex-cli",
-            "supported_version": SUPPORTED_CODEX_CLIENT,
+            "supported_version": CLIENT_PROTOCOL_SENTINEL,
         }
         assert "supported_codex_client" not in package_manifest
         managed_surface = package_manifest["managed_surface"]

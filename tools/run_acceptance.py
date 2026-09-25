@@ -17,7 +17,6 @@ sys.path.insert(0, str(ROOT / "src"))
 from codex_base.acceptance import write_acceptance_evidence
 from codex_base.foundation_evidence import collect_foundation_artifacts, validate_foundation_engine
 from codex_base.release import (
-    SUPPORTED_CODEX_CLIENT,
     TARGET_REPOSITORY,
     assert_clean_git_source,
     bind_acceptance_evidence,
@@ -92,7 +91,7 @@ def _foundation_command(
         "-ClientId",
         "codex-cli",
         "-ClientVersion",
-        SUPPORTED_CODEX_CLIENT,
+        "0.0.0",
         "-Json",
     ]
     if package is not None:

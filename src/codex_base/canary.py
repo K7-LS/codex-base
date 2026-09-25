@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .acceptance import evidence_body_sha256
-from .core_acceptance import package_client, package_discovery, package_foundation_sha256
+from .core_acceptance import client_matches_package, package_client, package_discovery, package_foundation_sha256
 
 
 EXPECTED_PHASES = {
@@ -71,7 +71,7 @@ def build_canary_evidence(
         and isinstance(asset.get("bytes"), int)
         and not isinstance(asset.get("bytes"), bool)
         and asset["bytes"] > 0
-        and {"id": "codex-cli", "version": client_version} == expected_client
+        and client_matches_package({"id": "codex-cli", "version": client_version}, expected_client)
         and _valid_sha256(foundation_sha256)
         and (package_path is None or foundation_sha256 == package_foundation_sha256(package_path, release_binding))
         and _valid_sha256(before_surface_sha256)

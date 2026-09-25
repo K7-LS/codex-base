@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -17,11 +18,9 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from codex_base.canary import build_canary_evidence, surface_digest  # noqa: E402
 from codex_base.promotion import _verify_candidate  # noqa: E402
-from codex_base.core_acceptance import package_client, package_foundation_sha256  # noqa: E402
-from codex_base.release import SUPPORTED_CODEX_CLIENT  # noqa: E402
+from codex_base.core_acceptance import package_foundation_sha256  # noqa: E402
 
 
-SUPPORTED_CLIENT = SUPPORTED_CODEX_CLIENT
 CANARY_LOCAL_EXCEPTION = ".agents/skills/local-canary"
 
 
@@ -57,7 +56,7 @@ def _foundation_command(
     home: Path,
     package: Path | None = None,
     target: str | None = None,
-    client_version: str = SUPPORTED_CLIENT,
+    client_version: str,
 ) -> list[str]:
     command = [
         powershell,
@@ -137,7 +136,6 @@ def main() -> int:
     _, binding, package, _, _ = _verify_candidate(candidate_dir)
     if hashlib.sha256(foundation.read_bytes()).hexdigest() != package_foundation_sha256(package, binding):
         raise SystemExit("External Foundation script differs from the candidate package")
-    expected_client = package_client(package)
     client = subprocess.run(
         [arguments.codex, "--version"],
         capture_output=True,
@@ -147,11 +145,11 @@ def main() -> int:
         check=False,
         timeout=15,
     )
-    if (
-        client.returncode != 0
-        or client.stdout.strip() != f"codex-cli {expected_client['version']}"
-    ):
-        raise SystemExit(f"Codex client must match package: {expected_client['version']}")
+    if client.returncode != 0 or not client.stdout.strip().startswith("codex-cli "):
+        raise SystemExit("Codex CLI version could not be observed")
+    client_version = client.stdout.strip()[len("codex-cli "):]
+    if re.fullmatch(r"[0-9]+(?:\.[0-9]+){2,7}(?:-[0-9A-Za-z.-]+)?", client_version) is None:
+        raise SystemExit("Codex CLI version observation is invalid")
 
     with tempfile.TemporaryDirectory(prefix="codex-live-canary-") as raw:
         work = Path(raw)
@@ -168,7 +166,7 @@ def main() -> int:
         plan = _run_json(
             _foundation_command(
                 powershell=arguments.powershell,
-                client_version=expected_client["version"],
+                client_version=client_version,
                 foundation=foundation,
                 action="plan",
                 home=home,
@@ -179,7 +177,7 @@ def main() -> int:
         install = _run_json(
             _foundation_command(
                 powershell=arguments.powershell,
-                client_version=expected_client["version"],
+                client_version=client_version,
                 foundation=foundation,
                 action="install",
                 home=home,
@@ -196,7 +194,7 @@ def main() -> int:
         doctor = _run_json(
             _foundation_command(
                 powershell=arguments.powershell,
-                client_version=expected_client["version"],
+                client_version=client_version,
                 foundation=foundation,
                 action="doctor",
                 home=home,
@@ -207,7 +205,7 @@ def main() -> int:
         inventory = _run_json(
             _foundation_command(
                 powershell=arguments.powershell,
-                client_version=expected_client["version"],
+                client_version=client_version,
                 foundation=foundation,
                 action="inventory",
                 home=home,
@@ -218,7 +216,7 @@ def main() -> int:
         rollback = _run_json(
             _foundation_command(
                 powershell=arguments.powershell,
-                client_version=expected_client["version"],
+                client_version=client_version,
                 foundation=foundation,
                 action="rollback",
                 home=home,
@@ -232,7 +230,7 @@ def main() -> int:
         after = surface_digest(home)
         evidence = build_canary_evidence(
             release_binding=binding,
-            client_version=expected_client["version"],
+            client_version=client_version,
             foundation_sha256=hashlib.sha256(
                 foundation.read_bytes()
             ).hexdigest(),
