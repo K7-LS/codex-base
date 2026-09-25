@@ -106,7 +106,7 @@ function Get-LlmSyncPolicy {
         $null -eq $policy.evidence -or
         [string]$policy.evidence.style -notin @('flat', 'verdicts') -or
         @($policy.evidence.required_verdicts).Count -lt 1 -or
-        [string]$policy.evidence.program_release -notmatch '^[1-3]/3$') {
+        [string]$policy.evidence.program_release -notin @('1/3', '2/2_INSTALLATION')) {
         throw 'Sync policy contract is invalid or not accepted.'
     }
     foreach ($value in @($policy.client.command)) {
@@ -314,6 +314,15 @@ function Assert-LlmReleaseEvidence {
             [string]$Evidence.acceptance_protocol -cne [string]$script:LlmSyncPolicy.evidence.required_protocol -or
             [string]$Evidence.MATCHED_AB -cne 'NOT_REQUIRED') {
             throw 'Acceptance evidence current protocol differs.'
+        }
+        if ([string]$script:LlmSyncPolicy.evidence.required_protocol -ceq 'installation-integrity-v1') {
+            if ([string]$Evidence.acceptance_scope -cne 'INSTALLATION_ONLY' -or
+                [string]$Evidence.CORE_BEHAVIOR -cne 'NOT_RUN' -or
+                [string]$Evidence.FULL_RELEASE_CODEX -cne 'NOT_PASS' -or
+                [string]$Evidence.INSTALL_INTEGRITY -cne 'PASS' -or
+                $null -ne $Evidence.PSObject.Properties['core_behavior_evidence']) {
+                throw 'Installation-only acceptance claim differs.'
+            }
         }
         if ($null -eq $Manifest.PSObject.Properties['core_behavior_contract']) {
             throw 'Acceptance evidence core contract differs.'

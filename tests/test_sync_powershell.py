@@ -171,14 +171,16 @@ def _write_verified_release_fixture(
                 "CODEX_OFFLINE_INTEGRATION",
                 "CODEX_TESTS",
                 "CANDIDATE_OFFLINE",
-                "CORE_BEHAVIOR",
                 "CODEX_CANARY",
-                "FULL_RELEASE_CODEX",
+                "INSTALL_INTEGRITY",
                 "RELEASE_INTEGRITY",
             )
         },
-        "PROGRAM_RELEASE": "1/3",
-        "acceptance_protocol": ACCEPTANCE_PROTOCOL,
+        "PROGRAM_RELEASE": "2/2_INSTALLATION",
+        "acceptance_protocol": "installation-integrity-v1",
+        "acceptance_scope": "INSTALLATION_ONLY",
+        "CORE_BEHAVIOR": "NOT_RUN",
+        "FULL_RELEASE_CODEX": "NOT_PASS",
         "MATCHED_AB": "NOT_REQUIRED",
         "FOUNDATION_SYNTHETIC": "NOT_RUN",
         "release_binding": binding,
@@ -290,12 +292,11 @@ def test_sync_powershell_runtime_is_target_neutral_and_policy_driven(
                 "CODEX_OFFLINE_INTEGRATION",
                 "CODEX_TESTS",
                 "CANDIDATE_OFFLINE",
-                "CORE_BEHAVIOR",
                 "CODEX_CANARY",
-                "FULL_RELEASE_CODEX",
+                "INSTALL_INTEGRITY",
             ],
-            "program_release": "1/3",
-            "required_protocol": ACCEPTANCE_PROTOCOL,
+            "program_release": "2/2_INSTALLATION",
+            "required_protocol": "installation-integrity-v1",
             "required_foundation_protocol": "foundation-engine-isolated-v1",
             "required_contract": contract_reference(),
         },
@@ -665,7 +666,7 @@ def test_sync_powershell_accepts_prepublication_evidence_after_gh_verification(
     [
         ("gate", "acceptance evidence is not pass: codex_canary"),
         ("binding", "acceptance evidence binding differs: version"),
-        ("core_gate", "acceptance evidence is not pass: core_behavior"),
+        ("core_gate", "installation-only acceptance claim differs."),
         ("missing_protocol", "acceptance evidence current protocol differs"),
         ("wrong_protocol", "acceptance evidence current protocol differs"),
         ("fake_historical_pass", "acceptance evidence current protocol differs"),
@@ -691,7 +692,7 @@ def test_sync_powershell_rejects_failed_gate_or_cross_bound_evidence(
         evidence["CODEX_CANARY"] = "NOT_RUN"
     elif mutation == "binding":
         evidence["release_binding"]["version"] = "9.9.9"
-    elif mutation == "core_gate": evidence["CORE_BEHAVIOR"] = "NOT_RUN"
+    elif mutation == "core_gate": evidence["CORE_BEHAVIOR"] = "PASS"
     elif mutation == "missing_protocol": evidence.pop("acceptance_protocol")
     elif mutation == "wrong_protocol": evidence["acceptance_protocol"] = "legacy"
     elif mutation == "fake_historical_pass": evidence["MATCHED_AB"] = "PASS"
@@ -834,8 +835,8 @@ def test_sync_powershell_rejects_embedded_core_mutants_after_outer_rebinding(
     assert evidence["release_binding"] == {key: manifest[key] for key in evidence["release_binding"]}
     assert evidence["evidence_body_sha256"] == evidence_body_sha256(evidence)
     assert (manifest["acceptance_evidence_sha256"] == _sha256_bytes(evidence_bytes)) is (mutation != "stale_evidence_hash")
-    assert evidence["CORE_BEHAVIOR"] == "PASS"
-    assert evidence["acceptance_protocol"] == ACCEPTANCE_PROTOCOL
+    assert evidence["CORE_BEHAVIOR"] == "NOT_RUN"
+    assert evidence["acceptance_protocol"] == "installation-integrity-v1"
 
     script = repo_root / "control-skills/sync-base/tools/sync_base.ps1"
     policy = repo_root / "control-skills/sync-base/sync-policy.json"

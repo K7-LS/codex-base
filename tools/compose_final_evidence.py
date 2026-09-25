@@ -43,23 +43,29 @@ def main() -> int:
     )
     parser.add_argument("--candidate-evidence", required=True, type=Path)
     parser.add_argument("--canary-evidence", required=True, type=Path)
-    parser.add_argument("--core-behavior-evidence", required=True, type=Path)
+    parser.add_argument("--core-behavior-evidence", type=Path)
+    parser.add_argument("--install-only", action="store_true",
+                        help="Use installation-integrity-v1; professional model behavior is NOT_PASS")
     parser.add_argument("--candidate-package", required=True, type=Path)
     parser.add_argument("--legacy-sync-bootstrap", action="store_true")
     parser.add_argument("--output", required=True, type=Path)
     arguments = parser.parse_args()
+    if arguments.install_only == bool(arguments.core_behavior_evidence):
+        parser.error("select exactly one of --install-only or --core-behavior-evidence")
+    core_path = arguments.core_behavior_evidence.resolve() if arguments.core_behavior_evidence else None
     final = compose_final_evidence(
         candidate=_load(arguments.candidate_evidence.resolve()),
         canary=_load(arguments.canary_evidence.resolve()),
-        core_behavior=_load(arguments.core_behavior_evidence.resolve()),
+        core_behavior=_load(core_path) if core_path else None,
         package_path=arguments.candidate_package.resolve(),
-        artifact_root=arguments.core_behavior_evidence.resolve().parent,
+        artifact_root=core_path.parent if core_path else None,
         legacy_sync_bootstrap=arguments.legacy_sync_bootstrap,
+        install_only=arguments.install_only,
     )
     if arguments.output.exists():
         raise RuntimeError("final evidence exists; refusing to overwrite")
-    if arguments.output.resolve().parent != arguments.core_behavior_evidence.resolve().parent:
-        copy_core_artifacts(final["core_behavior_evidence"], arguments.core_behavior_evidence.resolve().parent,
+    if core_path and arguments.output.resolve().parent != core_path.parent:
+        copy_core_artifacts(final["core_behavior_evidence"], core_path.parent,
                             arguments.output.resolve().parent)
     _write_new(arguments.output.resolve(), final)
     print(
