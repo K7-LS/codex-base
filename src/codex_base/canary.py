@@ -61,7 +61,7 @@ def build_canary_evidence(
     package_path: Path | None = None,
 ) -> dict[str, Any]:
     asset = release_binding.get("asset")
-    expected_client = package_client(package_path) if package_path else {"id": "codex-cli", "version": "0.146.0-alpha.3.1"}
+    expected_client = package_client(package_path) if package_path else {"id": "codex-cli", "version": "0.0.0"}
     expected_discovery = package_discovery(package_path, release_binding) if package_path else {"agents": 16, "skills": 41}
     valid = (
         release_binding.get("target") == "codex"
