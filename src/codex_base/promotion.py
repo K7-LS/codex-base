@@ -10,7 +10,8 @@ from .acceptance import (
     evidence_body_sha256,
     release_binding_from_manifest,
 )
-from .final_evidence import LEGACY_SYNC_BOOTSTRAP_CONTRACT, _validate_canary
+from .final_evidence import (LEGACY_SYNC_BOOTSTRAP_CONTRACT, INSTALL_ACCEPTANCE_PROTOCOL,
+                             INSTALL_PROGRAM_RELEASE, _validate_canary)
 from .foundation_evidence import validate_foundation_engine
 from .session_tools import validate_session_tools_asset_record, validate_session_tools_release_binding
 from .core_acceptance import (
@@ -31,6 +32,7 @@ REQUIRED_FULL_RELEASE_GATES = (
     "CORE_BEHAVIOR",
     "FULL_RELEASE_CODEX",
 )
+REQUIRED_INSTALL_GATES = REQUIRED_FULL_RELEASE_GATES[:7] + ("INSTALL_INTEGRITY",)
 
 
 @dataclass(frozen=True)
@@ -85,15 +87,26 @@ def _verify_evidence(
             raise ValueError("current engine-only evidence cannot claim historical Foundation acceptance")
         if "core_behavior" in evidence:
             raise ValueError("obsolete core_behavior wire key collides with the PowerShell verdict key")
-        if (evidence.get("acceptance_protocol") != ACCEPTANCE_PROTOCOL
+        protocol = evidence.get("acceptance_protocol")
+        if (protocol not in (ACCEPTANCE_PROTOCOL, INSTALL_ACCEPTANCE_PROTOCOL)
             or evidence.get("MATCHED_AB") != "NOT_REQUIRED"
             or evidence.get("matched_ab_not_required_reason") != MATCHED_AB_NOT_REQUIRED_REASON):
-            raise ValueError("current core acceptance protocol is missing or differs")
-        for gate in REQUIRED_FULL_RELEASE_GATES:
+            raise ValueError("current acceptance protocol is missing or differs")
+        for gate in (REQUIRED_FULL_RELEASE_GATES if protocol == ACCEPTANCE_PROTOCOL else REQUIRED_INSTALL_GATES):
             if evidence.get(gate) != "PASS":
                 raise ValueError(f"{gate} is not PASS")
         validate_foundation_engine(evidence.get("foundation"), evidence.get("foundation_artifacts"),
                                    binding, package_path=package_path)
+        if protocol == INSTALL_ACCEPTANCE_PROTOCOL:
+            if (evidence.get("acceptance_scope") != "INSTALLATION_ONLY"
+                or evidence.get("CORE_BEHAVIOR") != "NOT_RUN"
+                or evidence.get("FULL_RELEASE_CODEX") != "NOT_PASS"
+                or evidence.get("PROGRAM_RELEASE") != INSTALL_PROGRAM_RELEASE
+                or "core_behavior_evidence" in evidence
+                or evidence.get("release_permissions", {}).get("stable_release") != "USER_DIRECTED_INSTALLATION_ONLY"):
+                raise ValueError("installation-only acceptance claim differs")
+            _validate_canary(evidence.get("canary_evidence"), binding, package_path)
+            return
         if evidence.get("PROGRAM_RELEASE") != "1/3":
             raise ValueError("PROGRAM_RELEASE is not 1/3")
         if package_path is None or artifact_root is None:
@@ -229,7 +242,8 @@ def promote_candidate(
     destination_lock.write_bytes(lock_bytes)
     destination_evidence = output_dir / "acceptance-evidence.json"
     destination_evidence.write_bytes(final_evidence_bytes)
-    copy_core_artifacts(final_evidence["core_behavior_evidence"], final_evidence_path.parent, output_dir)
+    if final_evidence["acceptance_protocol"] == ACCEPTANCE_PROTOCOL:
+        copy_core_artifacts(final_evidence["core_behavior_evidence"], final_evidence_path.parent, output_dir)
     _verify_evidence(final_evidence, binding, require_full_release=True,
                      package_path=destination_zip, artifact_root=output_dir)
 
@@ -366,6 +380,8 @@ def create_package_acceptance(
         "schema_version": 1,
         "target": "codex",
         "package_acceptance": "PASS",
+        "acceptance_protocol": evidence["acceptance_protocol"],
+        "acceptance_scope": evidence.get("acceptance_scope", "PROFESSIONAL_CORE"),
         "client": client,
         "asset": asset,
         "release_manifest": {

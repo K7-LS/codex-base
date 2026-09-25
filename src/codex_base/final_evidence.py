@@ -43,6 +43,8 @@ LEGACY_SYNC_BOOTSTRAP_CONTRACT = {
         "gh attestation verify",
     ],
 }
+INSTALL_ACCEPTANCE_PROTOCOL = "installation-integrity-v1"
+INSTALL_PROGRAM_RELEASE = "2/2_INSTALLATION"
 
 
 def _json_bytes(value: object) -> bytes:
@@ -282,23 +284,64 @@ def compose_final_evidence(
     package_path: Path | None = None,
     artifact_root: Path | None = None,
     legacy_sync_bootstrap: bool = False,
+    install_only: bool = False,
 ) -> dict[str, Any]:
     """Compose current evidence; historical A/B remains a separate benchmark."""
 
     binding = _validate_candidate(candidate)
     if "core_behavior" in candidate:
         raise ValueError("obsolete core_behavior wire key collides with the PowerShell verdict key")
-    if package_path is None or artifact_root is None:
-        raise ValueError("core behavior evidence requires package and artifact paths")
+    if not install_only and core_behavior is None:
+        raise ValueError("core behavior evidence is required")
+    if package_path is None:
+        raise ValueError("acceptance evidence requires package path")
     validate_foundation_engine(candidate.get("foundation"), candidate.get("foundation_artifacts"),
                                binding, package_path=package_path)
-    validate_core_behavior(core_behavior, binding, package_path=package_path, artifact_root=artifact_root)
+    if install_only:
+        if core_behavior is not None or candidate.get("CORE_BEHAVIOR") != "NOT_RUN":
+            raise ValueError("installation-only evidence cannot claim or conceal core behavior acceptance")
+    else:
+        validate_core_behavior(core_behavior, binding, package_path=package_path, artifact_root=artifact_root)
     _validate_canary(canary, binding, package_path)
     final = dict(candidate)
     final.pop("evidence_body_sha256", None)
     final.pop("matched_ab_metrics", None)
     final.pop("matched_ab_benchmark", None)
     release_integrity = "PASS" if legacy_sync_bootstrap else "PENDING_PUBLICATION"
+    if install_only:
+        final.update({
+            "acceptance_protocol": INSTALL_ACCEPTANCE_PROTOCOL,
+            "acceptance_scope": "INSTALLATION_ONLY",
+            "MATCHED_AB": "NOT_REQUIRED",
+            "matched_ab_not_required_reason": MATCHED_AB_NOT_REQUIRED_REASON,
+            "CODEX_CANARY": "PASS",
+            "canary_evidence": canary,
+            "CORE_BEHAVIOR": "NOT_RUN",
+            "FULL_RELEASE_CODEX": "NOT_PASS",
+            "INSTALL_INTEGRITY": "PASS",
+            "PROGRAM_RELEASE": INSTALL_PROGRAM_RELEASE,
+            "RELEASE_INTEGRITY": release_integrity,
+            "evidence_sources": {
+                "candidate_offline": _source_record(candidate),
+                "canary": _source_record(canary),
+            },
+            "release_permissions": {
+                "paid_matched_ab": "NOT_REQUIRED_HISTORICAL_BENCHMARK",
+                "hub_canary": "PASS",
+                "stable_release": "USER_DIRECTED_INSTALLATION_ONLY",
+            },
+            "limitations": [
+                "Professional-core model conformance was not established for these package bytes.",
+                "An earlier candidate failed or could not exercise several model scenarios; its results do not transfer to this package.",
+                "This verdict covers package integrity, offline checks and the no-model install/doctor/rollback canary only.",
+                "Release integrity is pending immutable publication and GitHub attestation verification.",
+            ],
+        })
+        if legacy_sync_bootstrap:
+            final["release_integrity_contract"] = dict(LEGACY_SYNC_BOOTSTRAP_CONTRACT)
+        final["evidence_body_sha256"] = evidence_body_sha256(final)
+        validate_current_wire_keys(final)
+        return final
     final.update(
         {
             "acceptance_protocol": ACCEPTANCE_PROTOCOL,

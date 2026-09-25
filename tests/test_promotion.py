@@ -193,6 +193,30 @@ def test_promotion_reuses_exact_candidate_zip_bytes(repo_root, tmp_path):
     assert len(manifest["promoted_from_candidate_manifest_sha256"]) == 64
 
 
+def test_installation_only_promotion_preserves_unpassed_model_verdict(repo_root, tmp_path):
+    candidate, binding = _candidate(repo_root, tmp_path)
+    final = _final_evidence(tmp_path / "final-evidence.json", binding)
+    evidence = json.loads(final.read_bytes())
+    evidence.pop("core_behavior_evidence")
+    evidence.update({
+        "acceptance_protocol": "installation-integrity-v1",
+        "acceptance_scope": "INSTALLATION_ONLY",
+        "CORE_BEHAVIOR": "NOT_RUN",
+        "FULL_RELEASE_CODEX": "NOT_PASS",
+        "INSTALL_INTEGRITY": "PASS",
+        "PROGRAM_RELEASE": "2/2_INSTALLATION",
+        "release_permissions": {"stable_release": "USER_DIRECTED_INSTALLATION_ONLY"},
+    })
+    evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
+    final.write_bytes(_json_bytes(evidence))
+    result = promote_candidate(candidate, final, tmp_path / "stable")
+    assert not (result.zip_path.parent / "core-behavior.json").exists()
+    verification = _release_verification(tmp_path / "verification.json", result.manifest_path)
+    acceptance = create_package_acceptance(result.manifest_path, result.evidence_path,
+                                          verification, result.zip_path.parent / "package-acceptance.json")
+    assert acceptance["acceptance_scope"] == "INSTALLATION_ONLY"
+
+
 @pytest.mark.parametrize("mutation", ["missing", "changed"])
 def test_promotion_rejects_incomplete_or_changed_session_tools(repo_root, tmp_path, mutation):
     candidate, binding = _candidate(repo_root, tmp_path)

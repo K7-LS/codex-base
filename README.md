@@ -25,8 +25,8 @@ is silent when there is no update. Installation is explicit through
 No consumer feedback, telemetry, session report, credential, or local-change
 upload exists.
 
-Historical updaters that require `FOUNDATION_SYNTHETIC=PASS` and `MATCHED_AB=PASS`
-cannot consume the professional-core evidence contract. The explicit
+Historical updaters that require earlier evidence protocols cannot consume
+the 0.2.3 installation-integrity evidence contract. The explicit
 [hub migration package](migration/README.md) provides a separately verified
 transition without rewriting verdicts or changing the installed policy first.
 It requires a published migration release; local candidates do not authorize
@@ -80,6 +80,15 @@ and a package-bound no-model canary. Its final evidence records
 version must match the actual tested executable; model and reasoning remain
 user/host choices. Offline construction does not accept model behavior.
 
+For the owner-directed 0.2.3 release, `installation-integrity-v1` is a separate,
+limited acceptance contract. It requires all offline gates, accepted Foundation
+engine evidence, a package-bound no-model install/doctor/rollback canary and
+immutable GitHub release/asset attestations. The final evidence records
+`INSTALL_INTEGRITY: PASS`, `CORE_BEHAVIOR: NOT_RUN`, and
+`FULL_RELEASE_CODEX: NOT_PASS`. An earlier candidate's model run did not pass;
+this protocol makes no claim of professional model behavior. Existing
+`professional-core-v1` validation remains available for future releases.
+
 The historical owner-authorized guarded GPT-5.6 Terra matched A/B started its first
 call and completed none. Hardened evidence identified `item.completed` with
 the exact-version JSONL item type redacted as unknown. The official
@@ -97,7 +106,7 @@ The historical runner's no-spend plan remains available for that separate test:
 py -3.12 .\tools\run_matched_ab.py
 ```
 
-After those gates produce final `PASS` evidence, stable assets can be prepared
+After the selected protocol's gates produce valid final evidence, stable assets can be prepared
 without rebuilding the ZIP:
 
 ```powershell

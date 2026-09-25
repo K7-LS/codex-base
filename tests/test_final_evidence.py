@@ -175,6 +175,24 @@ def test_current_composition_needs_no_historical_model_call(tmp_path, legacy):
     assert final["evidence_body_sha256"] == evidence_body_sha256(final)
 
 
+def test_installation_only_composition_keeps_model_verdict_unpassed(tmp_path):
+    binding = _binding(tmp_path)
+    package_path = tmp_path / binding["asset"]["name"]
+    candidate = _candidate(binding, package_path)
+    candidate["CORE_BEHAVIOR"] = "NOT_RUN"
+    candidate["evidence_body_sha256"] = evidence_body_sha256(candidate)
+    final = compose_final_evidence(candidate=candidate,
+                                   canary=_canary(binding, package_path),
+                                   package_path=package_path, install_only=True)
+    assert final["acceptance_protocol"] == "installation-integrity-v1"
+    assert final["acceptance_scope"] == "INSTALLATION_ONLY"
+    assert final["INSTALL_INTEGRITY"] == "PASS"
+    assert final["CORE_BEHAVIOR"] == "NOT_RUN"
+    assert final["FULL_RELEASE_CODEX"] == "NOT_PASS"
+    assert "core_behavior_evidence" not in final
+    assert final["evidence_body_sha256"] == evidence_body_sha256(final)
+
+
 @pytest.mark.parametrize("shell", ["pwsh", "powershell"])
 def test_real_composition_round_trips_windows_json_without_case_collision(tmp_path, shell):
     executable = shutil.which(shell)
