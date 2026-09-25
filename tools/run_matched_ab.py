@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -23,7 +24,6 @@ from codex_base.matched_ab import (  # noqa: E402
     CANDIDATE_SESSION_TOOL,
     CANDIDATE_SKILLS,
     GuardViolation,
-    SUPPORTED_CLIENT,
     build_codex_command,
     build_feature_preflight_command,
     inspect_event,
@@ -160,6 +160,7 @@ def _foundation_install(
     foundation: Path,
     package: Path,
     home: Path,
+    client_version: str,
 ) -> None:
     powershell = shutil.which("pwsh")
     if not powershell:
@@ -178,7 +179,7 @@ def _foundation_install(
             "-ClientId",
             "codex-cli",
             "-ClientVersion",
-            SUPPORTED_CLIENT,
+            client_version,
             "-Package",
             str(package),
             "-Json",
@@ -250,7 +251,7 @@ def _copy_auth_without_reading(auth_source: Path, home: Path) -> None:
     shutil.copy2(auth_source, destination)
 
 
-def _check_client(codex: str, environment: dict[str, str]) -> None:
+def _check_client(codex: str, environment: dict[str, str]) -> str:
     result = subprocess.run(
         [codex, "--version"],
         env=environment,
@@ -260,11 +261,12 @@ def _check_client(codex: str, environment: dict[str, str]) -> None:
         check=False,
         timeout=15,
     )
-    expected = f"codex-cli {SUPPORTED_CLIENT}"
-    if result.returncode != 0 or result.stdout.strip() != expected:
-        raise RuntimeError(
-            "Codex A/B requires exact client " + SUPPORTED_CLIENT
-        )
+    observed = result.stdout.strip()
+    if result.returncode != 0 or re.fullmatch(
+        r"codex-cli [0-9]+(?:\.[0-9]+){2,7}(?:-[0-9A-Za-z.-]+)?", observed
+    ) is None:
+        raise RuntimeError("Codex A/B client identity or version is invalid")
+    return observed[len("codex-cli "):]
 
 
 def _check_feature_controls(
@@ -476,7 +478,7 @@ def main(argv: list[str] | None = None) -> int:
             for index, run in enumerate(planned_runs(), start=1)
         ],
         "calls_total": 4,
-        "client_version": SUPPORTED_CLIENT,
+        "client_version": "observed_at_execution",
         "model": "gpt-5.6-terra",
         "reasoning_effort": "low",
         "tools": "disabled-and-fail-closed",
@@ -515,7 +517,8 @@ def main(argv: list[str] | None = None) -> int:
                     "домашний каталог по умолчанию больше не подставляется"
                 )
             _copy_legacy_surface(args.legacy_profile.resolve(), legacy_home)
-            _foundation_install(foundation, package, candidate_home)
+            client_version = _check_client(args.codex, _isolated_environment(legacy_home))
+            _foundation_install(foundation, package, candidate_home, client_version)
             _copy_auth_without_reading(
                 args.auth_file.resolve(),
                 legacy_home,
@@ -524,8 +527,8 @@ def main(argv: list[str] | None = None) -> int:
                 args.auth_file.resolve(),
                 candidate_home,
             )
-            _check_client(args.codex, _isolated_environment(legacy_home))
-            _check_client(args.codex, _isolated_environment(candidate_home))
+            if _check_client(args.codex, _isolated_environment(candidate_home)) != client_version:
+                raise RuntimeError("Codex A/B client changed between surfaces")
             _check_feature_controls(
                 args.codex,
                 _isolated_environment(legacy_home),
@@ -575,7 +578,7 @@ def main(argv: list[str] | None = None) -> int:
                     )
             except GuardViolation as error:
                 evidence = summarize_abort(
-                    client_version=SUPPORTED_CLIENT,
+                    client_version=client_version,
                     failure_code=error.code,
                     calls_started=calls_started,
                     completed_results=results,
@@ -597,7 +600,7 @@ def main(argv: list[str] | None = None) -> int:
 
             evidence = summarize_results(
                 results,
-                client_version=SUPPORTED_CLIENT,
+                client_version=client_version,
                 legacy_surface_sha256=surface_hashes["legacy"],
                 candidate_surface_sha256=surface_hashes["candidate"],
                 candidate_package_sha256=package_sha256,

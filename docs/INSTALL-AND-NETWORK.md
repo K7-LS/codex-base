@@ -59,9 +59,10 @@ $Foundation = Get-ChildItem `
   Select-Object -First 1 -ExpandProperty FullName
 
 # Прямая диагностика
+$ClientVersion = ((& codex --version) -replace '^codex-cli ', '').Trim()
 pwsh -NoProfile -File $Foundation `
   doctor -Home $env:USERPROFILE -Target codex `
-  -ClientId codex-cli -ClientVersion 0.153.1 -Json
+  -ClientId codex-cli -ClientVersion $ClientVersion -Json
 
 # Инвентарь
 pwsh -NoProfile -File $Foundation `
@@ -76,9 +77,9 @@ pwsh -NoProfile -File $Foundation `
 
 | Метрика | Legacy hub | Candidate |
 | --- | ---: | ---: |
-| Base-controlled bytes | 72,077 | 26,254 |
-| Оценка tokens `ceil(bytes/3)` | 24,026 | 8,752 |
-| Сокращение | — | 63.58% |
+| Base-controlled bytes | 72,077 | 27,526 |
+| Оценка tokens `ceil(bytes/3)` | 24,026 | 9,176 |
+| Сокращение | — | 61.81% |
 
 Это оценка статического startup/discovery-контекста, а не биллинг провайдера.
 Этот отчёт не запускает matched A/B и не доказывает снижение total input

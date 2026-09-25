@@ -8,7 +8,7 @@ from foundation_evidence_support import synthetic_foundation
 
 from codex_base.core_acceptance import (
     ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON,
-    body_sha256, contract_bytes, expected_contract, read_json, sha256, validate_core_behavior,
+    body_sha256, client_matches_package, contract_bytes, expected_contract, read_json, sha256, validate_core_behavior,
 )
 from codex_base.promotion import _verify_evidence, REQUIRED_FULL_RELEASE_GATES
 from core_evidence_support import minimal_package, synthetic_core
@@ -33,6 +33,14 @@ def test_contract_keeps_all_original_criteria_and_single_run_claim():
     assert len(contract["criteria"]) == 15
     assert contract["minimum_runs_per_case"] == 1
     assert contract["claim"] == "SINGLE_RUN_CONFORMANCE_NOT_RELIABILITY"
+
+
+@pytest.mark.parametrize("version", ["0.153.1", "0.155.0-alpha.16.4", "1.20.0"])
+def test_release_client_contract_does_not_pin_cli_version(version):
+    package_client = {"id": "codex-cli", "version": "0.0.0"}
+    assert client_matches_package({"id": "codex-cli", "version": version}, package_client)
+    assert not client_matches_package({"id": "other-cli", "version": version}, package_client)
+    assert not client_matches_package({"id": "codex-cli", "version": ""}, package_client)
 
 
 def test_complete_synthetic_bundle_validates_integrity_only(bundle):

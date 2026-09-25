@@ -1,6 +1,6 @@
 # Codex Base
 
-Native, progressively loaded base targeting `codex-cli 0.153.1`.
+Native, progressively loaded base for Codex CLI and Desktop without a client-version pin.
 
 ## Runtime shape
 

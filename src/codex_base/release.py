@@ -28,7 +28,11 @@ from .session_tools import (
 )
 
 
-SUPPORTED_CODEX_CLIENT = "0.153.1"
+# Foundation protocol v1 requires a semver-shaped client field in the signed
+# package.  Its engine validates client identity, but deliberately does not
+# compare this field with the observed CLI version.  0.0.0 is a protocol
+# sentinel; it is never a required, recommended, or tested Codex CLI version.
+CLIENT_PROTOCOL_SENTINEL = "0.0.0"
 TARGET_REPOSITORY = CANONICAL_REPOSITORY
 TRANSFORMATION_ID = CANONICAL_TRANSFORMATION
 FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
@@ -611,7 +615,7 @@ def _build_release_from_export(
         "version": version,
         "client": {
             "id": "codex-cli",
-            "supported_version": SUPPORTED_CODEX_CLIENT,
+            "supported_version": CLIENT_PROTOCOL_SENTINEL,
         },
         "foundation_engine_version": foundation_version,
         "managed_surface": {
@@ -691,7 +695,7 @@ def _build_release_from_export(
         "channel": "candidate",
         "client": {
             "id": "codex-cli",
-            "supported_version": SUPPORTED_CODEX_CLIENT,
+            "supported_version": CLIENT_PROTOCOL_SENTINEL,
         },
         "foundation_engine_version": foundation_version,
         "foundation_engine_manifest_sha256": foundation_manifest_sha256,

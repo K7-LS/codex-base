@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 import zipfile
@@ -176,6 +177,20 @@ def package_client(package_path: Path) -> dict:
     return {"id": client["id"], "version": client["supported_version"]}
 
 
+def client_matches_package(observed: object, package_client_record: dict) -> bool:
+    """Foundation v1's 0.0.0 sentinel permits any observed Codex CLI version."""
+    return (
+        isinstance(observed, dict)
+        and observed.get("id") == package_client_record.get("id")
+        and isinstance(observed.get("version"), str)
+        and re.fullmatch(r"[0-9]+(?:\.[0-9]+){2,7}(?:-[0-9A-Za-z.-]+)?", observed["version"]) is not None
+        and (
+            package_client_record.get("version") == "0.0.0"
+            or observed.get("version") == package_client_record.get("version")
+        )
+    )
+
+
 def package_discovery(package_path: Path, binding: dict) -> dict:
     names = package_source_inventory(package_path, binding)
     return {
@@ -300,7 +315,7 @@ def validate_core_behavior(
         client = _object(runtime.get("client"), "client observation")
         _require(_text(client.get("id")) and _text(client.get("version")) and _text(runtime.get("model"))
                  and _text(runtime.get("reasoning_effort")), "effective runtime observation is missing")
-        _require(client == expected_client, "observed client differs from package contract")
+        _require(client_matches_package(client, expected_client), "observed client differs from package contract")
         _require(runtime.get("effective_config_artifact") in payloads, "effective config artifact is missing")
         _require(run.get("materialized_source_inventory") == inventory, "materialized source bytes differ from package")
         loaded_inventory = _object(run.get("loaded_source_inventory"), "loaded source inventory")
