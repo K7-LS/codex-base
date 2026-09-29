@@ -20,7 +20,11 @@ directly. Independent source review remains required by the base rules.
 2. For Office/PDF deliverables, check appearance from actual Office/PDF output
    tied to the final file.
    For spreadsheets verify formulas and recalculated values as well as print
-   layout. An existing render is valid only while its source bytes still match;
+   layout. When the user supplies a formatting sample, give it to the file
+   reviewer and compare its applicable layout and cell styles with the final
+   file, including borders, font, alignment and print setup. A readable render
+   does not excuse a mismatch with that sample. An existing render is valid
+   only while its source bytes still match;
    distinguish reusing it from a fresh export. A supported Office renderer or a
    verified K7 exporter may provide the render; presence or a signed name alone
    does not prove the operation works. Automation may close only its own Office
@@ -39,7 +43,8 @@ directly. Independent source review remains required by the base rules.
 5. Office/PDF files cannot receive PASS without render evidence and an approved
    profile file reviewer. No artifact receives PASS without source audit.
 6. A receipt is valid only for its `result_sha256`. Any byte change invalidates
-   it. The profile file reviewer checks form; `auditor` checks source fidelity.
+   it. The profile file reviewer checks form against the supplied sample when
+   present; `auditor` checks source fidelity.
 
 The gate does not invent facts, prove visual quality without renders, or treat
 an OfficeCLI range screenshot/HTML render as final acceptance.
