@@ -80,8 +80,9 @@ and a package-bound no-model canary. Its final evidence records
 version must match the actual tested executable; model and reasoning remain
 user/host choices. Offline construction does not accept model behavior.
 
-For the owner-directed 0.2.3 release, `installation-integrity-v1` is a separate,
-limited acceptance contract. It requires all offline gates, accepted Foundation
+Introduced for the owner-directed 0.2.3 release, `installation-integrity-v1` is a
+separate, limited acceptance contract that can be selected for later releases.
+It requires all offline gates, accepted Foundation
 engine evidence, a package-bound no-model install/doctor/rollback canary and
 immutable GitHub release/asset attestations. The final evidence records
 `INSTALL_INTEGRITY: PASS`, `CORE_BEHAVIOR: NOT_RUN`, and

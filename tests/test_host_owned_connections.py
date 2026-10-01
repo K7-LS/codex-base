@@ -104,6 +104,21 @@ path = "C:/fixture/employee-marketplace"
 
 [profiles.employee]
 model = "employee-profile-model"
+
+[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "fixture-memory start"
+
+[[hooks.UserPromptSubmit]]
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "fixture-memory recall"
+
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "fixture-memory retain"
 '''
 
 
@@ -200,7 +215,7 @@ class HostOwnedConnectionsTest(unittest.TestCase):
                     if existing:
                         before = tomllib.loads(existing)
                         for key in ("model", "model_reasoning_effort", "mcp_servers",
-                                    "plugins", "plugin_marketplaces", "profiles"):
+                                    "plugins", "plugin_marketplaces", "profiles", "hooks"):
                             self.assertEqual(merged[key], before[key], key)
                     else:
                         self.assertEqual(merged, self.config)

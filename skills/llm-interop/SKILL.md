@@ -1,12 +1,15 @@
 ---
 name: llm-interop
-description: Use when задача передаётся между Codex, Claude и OpenCode.
+description: Use when задача передаётся между Codex, Claude и OpenCode или нужна общая Hindsight-память.
 ---
 
 # LLM interop
 
 Передавай состояние работы, а не внутреннюю историю чата. Используй один task-пакет,
 один result-пакет и ссылки на файлы проекта.
+
+Для запрошенной общей Hindsight-памяти сначала прочитай
+[hindsight.md](references/hindsight.md); task/result-пакет её не заменяет.
 
 ## Выбери режим
 
