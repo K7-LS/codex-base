@@ -64,7 +64,8 @@ python tools/prepare_core_eval.py --output .work/core-eval/candidate-plan.json
 
 `contract.json` задаёт отдельный контракт `k7-professional-core-v1`.
 
-Для выпуска 0.2.3 действует ограниченный протокол `installation-integrity-v1`:
+Начиная с выпуска 0.2.3 можно выбрать ограниченный протокол
+`installation-integrity-v1`:
 он проверяет целостность пакета, офлайн-гейты, Foundation и canary установки,
 но не присваивает `CORE_BEHAVIOR: PASS` и `FULL_RELEASE_CODEX: PASS`.
 Предыдущий модельный прогон не прошёл; опубликованный пакет не заявляет
