@@ -1,5 +1,5 @@
 {
-  "description": "Codex Base release notification and selective local consequence review.",
+  "description": "Codex Base release notification.",
   "hooks": {
     "SessionStart": [
       {
@@ -10,18 +10,6 @@
             "command": "pwsh -NoProfile -File \"$HOME/.codex/base/runtime/hooks/check_release.ps1\"",
             "commandWindows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"$env:USERPROFILE\\.codex\\base\\runtime\\hooks\\check_release.ps1\"",
             "timeout": 38
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "pwsh -NoProfile -File \"$HOME/.codex/base/runtime/hooks/check_consequences.ps1\"",
-            "commandWindows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"$env:USERPROFILE\\.codex\\base\\runtime\\hooks\\check_consequences.ps1\"",
-            "timeout": 10
           }
         ]
       }

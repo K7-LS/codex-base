@@ -43,12 +43,12 @@ MATCHED_AB_BENCHMARK = {
     },
     # A/B сравнивает установленные model-visible homes, а не структуру ZIP:
     # ru-writing-style доставляется каналом session-tools-baseline и после
-    # установки материализуется в .agents/skills сороковым.
+    # установки материализуется в .agents/skills сорок первым.
     "candidate": {
         "agents_count": 16,
-        "base_skills_count": 39,
+        "base_skills_count": 40,
         "session_tools_count": 1,
-        "skills_count": 40,
+        "skills_count": 41,
     },
     "plugin_policy": {
         "plugins": "disabled",

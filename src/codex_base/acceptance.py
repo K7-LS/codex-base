@@ -294,7 +294,7 @@ def write_acceptance_evidence(
         counts
         == {
             "agents": 16,
-            "capability_skills": 39,
+            "capability_skills": 40,
             "control_skills": 1,
             "cold": 27,
         }

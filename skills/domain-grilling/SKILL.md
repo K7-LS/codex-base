@@ -1,6 +1,6 @@
 ---
 name: domain-grilling
-description: Use when инженерной задаче не хватает критичных вводных.
+description: Use when не хватает инженерных вводных.
 ---
 
 # domain-grilling
@@ -46,3 +46,7 @@ Read the supplied inputs first and raise only a remaining decisive gap.
 This skill does not install or configure hooks, plugins or tools. Follow the
 base permission rules for any such change. Discovery and activation must be
 verified in the target host; the presence of this file alone proves neither.
+
+After the work, use `heads-up` only for a material unresolved assumption,
+consequence, or decision the user could miss. It does not replace a question
+needed before the work begins.

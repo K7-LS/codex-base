@@ -100,7 +100,7 @@ def _build_desired_state(source_root: Path) -> dict[str, object]:
         "unknown_policy": "prompt-every-run",
         "skills": sorted(str(row["id"]) for row in skills),
         "agents": sorted(str(row["id"]) for row in agents),
-        "hooks": ["SessionStart:startup:check_release", "Stop:check_consequences"],
+        "hooks": ["SessionStart:startup:check_release"],
         "managed_files": [
             ".codex/AGENTS.md",
             ".codex/config.toml",
