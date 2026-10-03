@@ -169,6 +169,12 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
         assert ".codex/base/components.lock.json" in names
         assert ".codex/base/foundation/0.1.0/foundation.ps1" in names
         assert ".codex/base/runtime/connection.ps1" in names
+        if (repo_root / "runtime/maintenance/repair_codex_config.py").is_file() and \
+                "runtime/maintenance/repair_codex_config.py" in subprocess.run(
+                    ["git", "ls-tree", "-r", "--name-only", source["commit"]],
+                    cwd=repo_root, check=True, capture_output=True, text=True,
+                ).stdout.splitlines():
+            assert ".codex/base/runtime/maintenance/repair_codex_config.py" in names
         assert ".agents/skills/sync-base/SKILL.md" in names
         assert len([name for name in names if name.startswith(".codex/agents/")]) == 16
         assert (

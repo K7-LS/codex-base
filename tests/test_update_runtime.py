@@ -903,9 +903,9 @@ def test_session_start_version_check_is_silent_or_one_line_and_ttl_bounded(
     assert second.stderr == ""
 
 
-def test_runtime_has_only_minimal_one_way_hook_and_no_model_defaults(repo_root):
+def test_runtime_has_release_and_local_consequence_hooks_with_no_model_defaults(repo_root):
     hooks = json.loads((repo_root / "runtime" / "hooks.json").read_text("utf-8"))
-    assert set(hooks["hooks"]) == {"SessionStart"}
+    assert set(hooks["hooks"]) == {"SessionStart", "Stop"}
     assert hooks["hooks"]["SessionStart"][0]["matcher"] == "^startup$"
 
     config = tomllib.loads((repo_root / "runtime" / "config.toml").read_text("utf-8"))

@@ -100,7 +100,7 @@ def _build_desired_state(source_root: Path) -> dict[str, object]:
         "unknown_policy": "prompt-every-run",
         "skills": sorted(str(row["id"]) for row in skills),
         "agents": sorted(str(row["id"]) for row in agents),
-        "hooks": ["SessionStart:startup:check_release"],
+        "hooks": ["SessionStart:startup:check_release", "Stop:check_consequences"],
         "managed_files": [
             ".codex/AGENTS.md",
             ".codex/config.toml",
@@ -565,6 +565,11 @@ def _build_release_from_export(
         entries,
         source_root / "runtime" / "hooks",
         ".codex/base/runtime/hooks",
+    )
+    _add_tree(
+        entries,
+        source_root / "runtime" / "maintenance",
+        ".codex/base/runtime/maintenance",
     )
     entries[".codex/base/runtime/connection.ps1"] = (
         source_root / "runtime" / "connection.ps1"

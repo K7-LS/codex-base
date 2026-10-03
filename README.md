@@ -15,6 +15,12 @@ invoke tools, custom agents, or reviewers. MCP servers and plugins are not
 preconfigured; a selected skill declares the capability it needs and missing
 dependencies fail as `BLOCKED`.
 
+The managed Stop hook checks local Git changes for selected high-impact
+patterns and asks for a consequence review before finishing. It makes no
+network or model call, and a silent hook is not a safety verdict. Existing
+workstations can resolve known Codex config warnings with the
+[config repair guide](docs/CONFIG-REPAIR.md).
+
 ## One-way delivery
 
 Consumers only check and receive immutable stable GitHub releases. The
