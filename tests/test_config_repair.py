@@ -2,6 +2,7 @@
 
 import importlib.util
 from pathlib import Path
+import shutil
 import tomllib
 
 
@@ -45,18 +46,52 @@ def test_hindsight_moves_only_with_verified_project_bridge(tmp_path: Path) -> No
         '[hooks.state]\nkey = "keep"\n'
         + "".join(
             f'[[hooks.{event}]]\n[[hooks.{event}.hooks]]\n'
-            f'type = "command"\ncommand = "node C:/.hindsight/{filename}"\n'
+            f'type = "command"\ncommand = "node C:/.hindsight/coding-agents/dist/{filename}"\n'
+            f'timeout = {60 if event == "Stop" else 30}\n'
             for event, filename in MODULE.HINDSIGHT_EVENTS.items()
-        ), encoding="utf-8",
+        ) + '[mcp_servers.keep]\nurl = "https://example.test/mcp"\n'
+        + '[profiles.employee]\nmodel = "user-choice"\n', encoding="utf-8",
     )
+    (codex / "hooks.json").write_text('{"hooks":{}}', encoding="utf-8")
+    project = tmp_path / "project"
+    (project / ".codex" / "hooks").mkdir(parents=True)
+    assets = SCRIPT.parents[2] / "skills" / "llm-interop" / "assets" / "hindsight-project-hooks"
+    installed_assets = tmp_path / ".agents" / "skills" / "llm-interop" / "assets" / "hindsight-project-hooks"
+    shutil.copytree(assets, installed_assets)
+    shutil.copy2(assets / "hooks.json", project / ".codex" / "hooks.json")
+    shutil.copy2(assets / "hooks" / "hindsight-bridge.ps1", project / ".codex" / "hooks" / "hindsight-bridge.ps1")
+    hindsight = tmp_path / ".hindsight"
+    scripts = hindsight / "coding-agents" / "dist"
+    scripts.mkdir(parents=True)
+    (hindsight / "coding-agent.json").write_text("{}", encoding="utf-8")
+    for filename in MODULE.HINDSIGHT_EVENTS.values():
+        (scripts / filename).write_text("// test script", encoding="utf-8")
+    before_verification = MODULE.inspect(tmp_path, project, apply=False)
+    assert before_verification["needs_review"]
+    assert ".codex/config.toml" not in before_verification["proposed_changes"]
+    report = MODULE.inspect(tmp_path, project, apply=True, verified_project_bridge=True)
+    assert not report["needs_review"]
+    repaired = tomllib.loads(config.read_text("utf-8"))
+    assert repaired["hooks"] == {"state": {"key": "keep"}}
+    assert repaired["mcp_servers"]["keep"]["url"] == "https://example.test/mcp"
+    assert repaired["profiles"]["employee"]["model"] == "user-choice"
+
+
+def test_empty_project_bridge_does_not_remove_hindsight_hooks(tmp_path: Path) -> None:
+    codex = tmp_path / ".codex"
+    codex.mkdir()
+    config = codex / "config.toml"
+    config.write_text('[hooks.state]\nkey = "keep"\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\n'
+                      'type = "command"\ncommand = "node C:/.hindsight/coding-agents/dist/codex-stop-hook.js"\n'
+                      'timeout = 60\n', encoding="utf-8")
     (codex / "hooks.json").write_text('{"hooks":{}}', encoding="utf-8")
     project = tmp_path / "project"
     (project / ".codex" / "hooks").mkdir(parents=True)
     (project / ".codex" / "hooks.json").write_text("{}", encoding="utf-8")
     (project / ".codex" / "hooks" / "hindsight-bridge.ps1").write_text("", encoding="utf-8")
-    report = MODULE.inspect(tmp_path, project, apply=True)
-    assert not report["needs_review"]
-    assert tomllib.loads(config.read_text("utf-8"))["hooks"] == {"state": {"key": "keep"}}
+    report = MODULE.inspect(tmp_path, project, apply=True, verified_project_bridge=True)
+    assert report["needs_review"]
+    assert "[[hooks.Stop]]" in config.read_text("utf-8")
 
 
 def test_different_duplicate_agents_require_review(tmp_path: Path) -> None:

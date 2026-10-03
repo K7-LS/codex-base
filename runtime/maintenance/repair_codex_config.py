@@ -63,16 +63,56 @@ def _only_expected_hindsight_hooks(config: dict) -> bool:
         groups = hooks[event]
         if not isinstance(groups, list) or len(groups) != 1:
             return False
+        if set(groups[0]) != {"hooks"}:
+            return False
         handlers = groups[0].get("hooks")
         if not isinstance(handlers, list) or len(handlers) != 1:
             return False
-        command = handlers[0].get("command", "")
-        if not isinstance(command, str) or ".hindsight" not in command or filename not in command:
+        handler = handlers[0]
+        if set(handler) != {"type", "command", "timeout"} or handler["type"] != "command":
+            return False
+        if handler["timeout"] != (60 if event == "Stop" else 30):
+            return False
+        command = handler["command"]
+        expected = rf'^node\s+"?[^"\n]*[\\/]\.hindsight[\\/]coding-agents[\\/]dist[\\/]{re.escape(filename)}"?$'
+        if not isinstance(command, str) or not re.fullmatch(expected, command, re.IGNORECASE):
             return False
     return True
 
 
-def inspect(home: Path, project: Path | None = None, apply: bool = False) -> dict:
+def _remove_inline_hook_arrays(raw: str) -> str:
+    """Remove the known inline hook arrays without touching later TOML tables."""
+    result: list[str] = []
+    in_hook_array = False
+    for line in raw.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("[[hooks.") and stripped.endswith("]]"):
+            in_hook_array = True
+        elif stripped.startswith("[") and stripped.endswith("]"):
+            in_hook_array = False
+        if not in_hook_array:
+            result.append(line)
+    return "".join(result)
+
+
+def _verified_project_bridge(home: Path, project: Path | None) -> bool:
+    if project is None:
+        return False
+    asset_root = home / ".agents" / "skills" / "llm-interop" / "assets" / "hindsight-project-hooks"
+    project_root = project / ".codex"
+    for relative in (Path("hooks.json"), Path("hooks/hindsight-bridge.ps1")):
+        reference = asset_root / relative
+        installed = project_root / relative
+        if not reference.is_file() or not installed.is_file() or reference.read_bytes() != installed.read_bytes():
+            return False
+    hindsight = home / ".hindsight"
+    if not (hindsight / "coding-agent.json").is_file():
+        return False
+    return all((hindsight / "coding-agents" / "dist" / name).is_file() for name in HINDSIGHT_EVENTS.values())
+
+
+def inspect(home: Path, project: Path | None = None, apply: bool = False,
+            verified_project_bridge: bool = False) -> dict:
     home = home.resolve()
     config_path = home / ".codex" / "config.toml"
     hooks_path = home / ".codex" / "hooks.json"
@@ -94,13 +134,14 @@ def inspect(home: Path, project: Path | None = None, apply: bool = False) -> dic
             updated = _remove_guardian_setting(updated)
         if hooks_path.is_file() and set(parsed.get("hooks", {})) - {"state"}:
             report["warnings"].append("hooks.json and inline hooks in the same user layer")
-            project_ready = project is not None and \
-                (project / ".codex" / "hooks.json").is_file() and \
-                (project / ".codex" / "hooks" / "hindsight-bridge.ps1").is_file()
-            if project_ready and _only_expected_hindsight_hooks(parsed):
-                updated = re.sub(r"(?ms)^\[\[hooks\..*\Z", "", updated).rstrip() + "\n"
+            if (verified_project_bridge and _verified_project_bridge(home, project)
+                    and _only_expected_hindsight_hooks(parsed)):
+                updated = _remove_inline_hook_arrays(updated)
             else:
-                report["needs_review"].append("inline hooks retained: no verified project bridge or mixed hooks")
+                report["needs_review"].append(
+                    "inline hooks retained: verify the project hook in Codex, then use "
+                    "--verified-project-bridge with an unchanged bridge template"
+                )
         if updated != raw:
             # Preserve the original line-ending style and UTF-8 BOM, if any.
             if "\r\n" in raw:
@@ -172,8 +213,11 @@ def main() -> None:
     parser.add_argument("--home", type=Path, required=True)
     parser.add_argument("--project", type=Path)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--verified-project-bridge", action="store_true",
+                        help="Assert that Codex has activated the project Hindsight hook")
     args = parser.parse_args()
-    print(json.dumps(inspect(args.home, args.project, args.apply), ensure_ascii=False, indent=2))
+    print(json.dumps(inspect(args.home, args.project, args.apply,
+                             args.verified_project_bridge), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

@@ -17,22 +17,26 @@ definitions for one role are reported as `needs_review`; compare them and
 choose the intended role before moving either file. No unknown role or hook
 is deleted automatically.
 
-If Hindsight is enabled for a selected project, first place the template from
-`~/.agents/skills/llm-interop/assets/hindsight-project-hooks/` into that
-project's `.codex/` directory. Merge with existing project hooks if present.
-The project must be trusted; review and trust the three project hooks in
-`/hooks`. Then diagnose and apply with `--project`:
+If Hindsight is enabled for a selected project, first place the unmodified
+template from `~/.agents/skills/llm-interop/assets/hindsight-project-hooks/`
+into that project's `.codex/` directory. Review and trust the three project
+hooks in `/hooks`, then start a fresh Codex session in that project and verify
+that Hindsight context is actually returned. Only after this live check, run:
 
 ```powershell
 $tool = "$env:USERPROFILE\.codex\base\runtime\maintenance\repair_codex_config.py"
 $project = 'C:\path\to\the\selected\project'
 py -3 $tool --home "$env:USERPROFILE" --project $project
-py -3 $tool --home "$env:USERPROFILE" --project $project --apply
+py -3 $tool --home "$env:USERPROFILE" --project $project --verified-project-bridge --apply
 ```
 
 This removes the three known Hindsight hook definitions from the user
-`config.toml` only when their project bridge exists and no mixed user hooks
-are present. The Foundation-managed `~/.codex/hooks.json` remains the sole
+`config.toml` only when the operator confirms live activation, the bridge
+matches the packaged template byte-for-byte, local Hindsight scripts exist,
+and no mixed user hooks are present. If the project has other hooks, merge
+them as needed and resolve the global conflict manually after confirming the
+merged project hooks work; the utility will retain the global definitions.
+The Foundation-managed `~/.codex/hooks.json` remains the sole
 user-layer hook source. Each changed file is copied into
 `~/.codex-backups/config-repair-<UTC timestamp>/` before the change.
 Run the diagnostic again; `warnings` should be empty or each remaining item
