@@ -218,7 +218,7 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
                     and "/sync-base/" not in name
                 ]
             )
-            == 38
+            == 39
         )
         assert ".agents/skills/ru-writing-style/SKILL.md" not in names
         assert "session-tools-baseline/tools/ru-writing-style/SKILL.md" in names
