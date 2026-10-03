@@ -22,6 +22,11 @@ base instruction, not a separate background model agent. Existing
 workstations can resolve known Codex config warnings with the
 [config repair guide](docs/CONFIG-REPAIR.md).
 
+Hindsight is an optional project integration with three event hooks. Version
+0.2.6 fixes Windows UTF-8 transport and provides an explicit, backup-first
+upgrade for known existing bridges; see the
+[Hindsight connection and upgrade guide](skills/llm-interop/references/hindsight.md).
+
 ## One-way delivery
 
 Consumers only check and receive immutable stable GitHub releases. The
