@@ -68,3 +68,17 @@ def test_different_duplicate_agents_require_review(tmp_path: Path) -> None:
     assert any("duplicate agent role" in item for item in report["warnings"])
     assert any("no automatic deletion" in item for item in report["needs_review"])
     assert sorted(path.name for path in agents.iterdir()) == ["legacy.toml", "smetchik.toml"]
+
+
+def test_identical_duplicate_keeps_managed_filename(tmp_path: Path) -> None:
+    agents = tmp_path / ".codex" / "agents"
+    agents.mkdir(parents=True)
+    payload = 'name = "сметчик"\ndescription = "same"\n'
+    (agents / "legacy.toml").write_text(payload, encoding="utf-8")
+    (agents / "smetchik.toml").write_text(payload, encoding="utf-8")
+    base = tmp_path / ".codex" / "base"
+    base.mkdir()
+    (base / "desired-state.json").write_text('{"agents":["smetchik"]}', encoding="utf-8")
+    report = MODULE.inspect(tmp_path, apply=True)
+    assert [path.name for path in agents.iterdir()] == ["smetchik.toml"]
+    assert (Path(report["backup"]) / ".codex" / "agents" / "legacy.toml").is_file()

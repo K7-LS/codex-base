@@ -110,6 +110,14 @@ def inspect(home: Path, project: Path | None = None, apply: bool = False) -> dic
             changes[config_path] = encoded
 
     if agents_dir.is_dir():
+        desired_path = home / ".codex" / "base" / "desired-state.json"
+        managed_ids: set[str] = set()
+        if desired_path.is_file():
+            try:
+                desired = json.loads(desired_path.read_text(encoding="utf-8"))
+                managed_ids = set(desired.get("agents", []))
+            except (OSError, ValueError, TypeError):
+                report["needs_review"].append("managed agent inventory is unreadable")
         by_name: dict[str, list[Path]] = {}
         for path in sorted(agents_dir.glob("*.toml")):
             try:
@@ -123,9 +131,10 @@ def inspect(home: Path, project: Path | None = None, apply: bool = False) -> dic
             if len(paths) < 2:
                 continue
             report["warnings"].append(f"duplicate agent role {name}: {', '.join(p.name for p in paths)}")
-            reference = paths[0].read_bytes()
-            if all(path.read_bytes() == reference for path in paths[1:]):
-                moves.extend(paths[1:])
+            ordered = sorted(paths, key=lambda path: (path.stem not in managed_ids, path.name))
+            reference = ordered[0].read_bytes()
+            if all(path.read_bytes() == reference for path in ordered[1:]):
+                moves.extend(ordered[1:])
             else:
                 report["needs_review"].append(f"different definitions for role {name}; no automatic deletion")
 
@@ -135,19 +144,23 @@ def inspect(home: Path, project: Path | None = None, apply: bool = False) -> dic
         if backup.exists():
             raise FileExistsError(backup)
         backup.mkdir(parents=True)
-        for path, payload in changes.items():
+        affected = [*changes, *moves]
+        for path in affected:
             relative = path.relative_to(home)
             target = backup / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, target)
-            path.write_bytes(payload)
-            report["repaired"].append(str(relative))
-        for path in moves:
-            relative = path.relative_to(home)
-            target = backup / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(path), str(target))
-            report["repaired"].append(str(relative))
+        try:
+            for path, payload in changes.items():
+                path.write_bytes(payload)
+                report["repaired"].append(str(path.relative_to(home)))
+            for path in moves:
+                path.unlink()
+                report["repaired"].append(str(path.relative_to(home)))
+        except OSError:
+            for path in affected:
+                shutil.copy2(backup / path.relative_to(home), path)
+            raise
         report["backup"] = str(backup)
     else:
         report["proposed_changes"] = [str(path.relative_to(home)) for path in (*changes, *moves)]
