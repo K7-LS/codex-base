@@ -18,10 +18,6 @@ if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf) -or
     exit 0
 }
 
-$utf8 = New-Object Text.UTF8Encoding($false)
-[Console]::InputEncoding = $utf8
-[Console]::OutputEncoding = $utf8
-$OutputEncoding = $utf8
 $payload = [Console]::In.ReadToEnd()
 $payload | & node $scriptPath
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+exit $LASTEXITCODE
