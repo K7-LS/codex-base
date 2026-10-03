@@ -67,9 +67,9 @@ def test_canary_evidence_requires_exact_rollback_and_discovery():
 @pytest.mark.parametrize(
     ("after", "agents", "skills"),
     [
-        ("d" * 64, 16, 39),
-        ("c" * 64, 15, 39),
-        ("c" * 64, 16, 40),
+        ("d" * 64, 16, 40),
+        ("c" * 64, 15, 40),
+        ("c" * 64, 16, 42),
     ],
 )
 def test_canary_evidence_fails_closed_on_rollback_or_discovery(

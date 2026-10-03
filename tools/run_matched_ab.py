@@ -209,8 +209,8 @@ def _foundation_install(
             f"{CANDIDATE_AGENTS}, skills={CANDIDATE_SKILLS}; actual agents="
             f"{len(agents)}, skills={len(skills)}"
         )
-    # Одного количества мало: сороковым мог оказаться неправильный файл.
-    # ru-writing-style приходит каналом session-tools, остальные 39 —
+    # Одного количества мало: сорок первым мог оказаться неправильный файл.
+    # ru-writing-style приходит каналом session-tools, остальные 40 —
     # основным деревом пакета.
     if not (
         home / ".agents" / "skills" / CANDIDATE_SESSION_TOOL / "SKILL.md"

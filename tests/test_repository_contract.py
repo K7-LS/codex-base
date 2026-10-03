@@ -34,7 +34,7 @@ def test_native_tree_materializes_every_catalog_component(repo_root):
     agent_files = sorted((repo_root / "agents").glob("*.toml"))
     skill_files = sorted((repo_root / "skills").glob("*/SKILL.md"))
     assert len(agent_files) == 16
-    assert len(skill_files) == 39
+    assert len(skill_files) == 40
 
     for item in catalog["agents"]:
         path = repo_root / str(item["source"])

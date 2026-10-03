@@ -5,7 +5,7 @@ Native, progressively loaded base for Codex CLI and Desktop without a client-ver
 ## Runtime shape
 
 - HOT: compact global `AGENTS.md` on every new session.
-- WARM: discovery metadata for 16 domain agents, 39 capability skills, and
+- WARM: discovery metadata for 16 domain agents, 40 capability skills, and
   one explicit control skill (`sync-base`).
 - COLD: full skill instructions, scripts, templates, 21 reference files,
   3 named chains, and 3 command references loaded only after routing.
@@ -14,6 +14,13 @@ The base does not set a model or reasoning level. Simple conversation must not
 invoke tools, custom agents, or reviewers. MCP servers and plugins are not
 preconfigured; a selected skill declares the capability it needs and missing
 dependencies fail as `BLOCKED`.
+
+The `heads-up` skill names a material consequence or unresolved assumption at
+the end of an answer when the user could miss it. It complements
+`domain-grilling` before work and independent review of the result. It is a
+base instruction, not a separate background model agent. Existing
+workstations can resolve known Codex config warnings with the
+[config repair guide](docs/CONFIG-REPAIR.md).
 
 ## One-way delivery
 

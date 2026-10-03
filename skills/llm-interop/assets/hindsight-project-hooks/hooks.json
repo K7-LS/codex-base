@@ -1,0 +1,41 @@
+{
+  "description": "Project-scoped optional Hindsight bridge. Requires a local Hindsight installation and its own opt-in configuration.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -Command \"$p=(Get-Location).Path; while($p -and -not (Test-Path -LiteralPath (Join-Path $p '.codex/hooks/hindsight-bridge.ps1'))){$p=Split-Path $p -Parent}; if($p){& (Join-Path $p '.codex/hooks/hindsight-bridge.ps1') SessionStart}\"",
+            "commandWindows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"$p=(Get-Location).Path; while($p -and -not (Test-Path -LiteralPath (Join-Path $p '.codex/hooks/hindsight-bridge.ps1'))){$p=Split-Path $p -Parent}; if($p){& (Join-Path $p '.codex/hooks/hindsight-bridge.ps1') SessionStart}\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -Command \"$p=(Get-Location).Path; while($p -and -not (Test-Path -LiteralPath (Join-Path $p '.codex/hooks/hindsight-bridge.ps1'))){$p=Split-Path $p -Parent}; if($p){& (Join-Path $p '.codex/hooks/hindsight-bridge.ps1') UserPromptSubmit}\"",
+            "commandWindows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"$p=(Get-Location).Path; while($p -and -not (Test-Path -LiteralPath (Join-Path $p '.codex/hooks/hindsight-bridge.ps1'))){$p=Split-Path $p -Parent}; if($p){& (Join-Path $p '.codex/hooks/hindsight-bridge.ps1') UserPromptSubmit}\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -Command \"$p=(Get-Location).Path; while($p -and -not (Test-Path -LiteralPath (Join-Path $p '.codex/hooks/hindsight-bridge.ps1'))){$p=Split-Path $p -Parent}; if($p){& (Join-Path $p '.codex/hooks/hindsight-bridge.ps1') Stop}\"",
+            "commandWindows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"$p=(Get-Location).Path; while($p -and -not (Test-Path -LiteralPath (Join-Path $p '.codex/hooks/hindsight-bridge.ps1'))){$p=Split-Path $p -Parent}; if($p){& (Join-Path $p '.codex/hooks/hindsight-bridge.ps1') Stop}\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

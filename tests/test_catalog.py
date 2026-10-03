@@ -37,6 +37,7 @@ EXPECTED_SKILL_IDS = {
     "facts-layer",
     "graphify",
     "handoff-to-new-chat",
+    "heads-up",
     "id-tom-priemka",
     "image-text-replace",
     "karpathy-guidelines",
@@ -74,7 +75,7 @@ def test_catalog_exposes_exact_native_capability_set(repo_root):
     assert {item["id"] for item in catalog["agents"]} == EXPECTED_AGENT_IDS
     assert {item["id"] for item in catalog["skills"]} == EXPECTED_SKILL_IDS
     assert len(catalog["agents"]) == 16
-    assert len(catalog["skills"]) == 39
+    assert len(catalog["skills"]) == 40
 
 
 def test_catalog_metadata_fits_worst_case_discovery_budget(repo_root):

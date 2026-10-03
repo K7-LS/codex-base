@@ -178,10 +178,10 @@ def test_installed_discovery_counts_base_and_session_tools(repo_root):
     runner = (repo_root / "tools" / "run_acceptance.py").read_text(
         encoding="utf-8"
     )
-    assert 'len(skill_files) != 40' in runner
-    assert '"base_skills": 39' in runner
+    assert 'len(skill_files) != 41' in runner
+    assert '"base_skills": 40' in runner
     assert '"session_tools": 1' in runner
-    assert '"total_discovery": {"agents": 16, "skills": 40}' in runner
+    assert '"total_discovery": {"agents": 16, "skills": 41}' in runner
 
 
 def test_inventory_proves_exact_unknown_quarantine(repo_root):

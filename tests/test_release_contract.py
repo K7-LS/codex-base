@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import shutil
 import subprocess
@@ -62,7 +63,7 @@ def test_component_lock_covers_all_vendored_runtime_components(repo_root):
     assert lock["target"] == "codex"
     assert lock["version"] == "0.1.0"
     assert len(lock["components"]["agents"]) == 16
-    assert len(lock["components"]["skills"]) == 39
+    assert len(lock["components"]["skills"]) == 40
     assert len(lock["components"]["control_skills"]) == 1
     assert len(lock["components"]["cold"]) == 27
     assert len(lock["components"]["runtime"]) == 1
@@ -169,6 +170,42 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
         assert ".codex/base/components.lock.json" in names
         assert ".codex/base/foundation/0.1.0/foundation.ps1" in names
         assert ".codex/base/runtime/connection.ps1" in names
+        if (repo_root / "runtime/maintenance/repair_codex_config.py").is_file() and \
+                "runtime/maintenance/repair_codex_config.py" in subprocess.run(
+                    ["git", "ls-tree", "-r", "--name-only", source["commit"]],
+                    cwd=repo_root, check=True, capture_output=True, text=True,
+                ).stdout.splitlines():
+            assert ".codex/base/runtime/maintenance/repair_codex_config.py" in names
+            bridge_files = (
+                ".agents/skills/llm-interop/assets/hindsight-project-hooks/hooks.json",
+                ".agents/skills/llm-interop/assets/hindsight-project-hooks/hooks/hindsight-bridge.ps1",
+            )
+            assert all(path in names for path in bridge_files)
+            installed_home = tmp_path / "installed-home"
+            script_name = ".codex/base/runtime/maintenance/repair_codex_config.py"
+            for path in (script_name, *bridge_files):
+                archive.extract(path, installed_home)
+            spec = importlib.util.spec_from_file_location(
+                "installed_config_repair", installed_home / script_name
+            )
+            assert spec and spec.loader
+            repair = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(repair)
+            project = tmp_path / "project"
+            project_hooks = project / ".codex"
+            (project_hooks / "hooks").mkdir(parents=True)
+            for path in bridge_files:
+                relative = Path(path).relative_to(
+                    ".agents/skills/llm-interop/assets/hindsight-project-hooks"
+                )
+                shutil.copy2(installed_home / path, project_hooks / relative)
+            hindsight = installed_home / ".hindsight"
+            scripts = hindsight / "coding-agents" / "dist"
+            scripts.mkdir(parents=True)
+            (hindsight / "coding-agent.json").write_text("{}", encoding="utf-8")
+            for filename in repair.HINDSIGHT_EVENTS.values():
+                (scripts / filename).write_text("// package test", encoding="utf-8")
+            assert repair._verified_project_bridge(installed_home, project)
         assert ".agents/skills/sync-base/SKILL.md" in names
         assert len([name for name in names if name.startswith(".codex/agents/")]) == 16
         assert (
@@ -181,7 +218,7 @@ def test_release_zip_is_deterministic_native_and_exactly_mapped(repo_root, tmp_p
                     and "/sync-base/" not in name
                 ]
             )
-            == 38
+            == 39
         )
         assert ".agents/skills/ru-writing-style/SKILL.md" not in names
         assert "session-tools-baseline/tools/ru-writing-style/SKILL.md" in names

@@ -566,6 +566,11 @@ def _build_release_from_export(
         source_root / "runtime" / "hooks",
         ".codex/base/runtime/hooks",
     )
+    _add_tree(
+        entries,
+        source_root / "runtime" / "maintenance",
+        ".codex/base/runtime/maintenance",
+    )
     entries[".codex/base/runtime/connection.ps1"] = (
         source_root / "runtime" / "connection.ps1"
     ).read_bytes()

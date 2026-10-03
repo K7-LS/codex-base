@@ -1334,4 +1334,4 @@ def test_session_start_skips_updater_and_keeps_release_notice(tmp_path: Path) ->
     hooks = json.loads((REPOSITORY_ROOT / "runtime" / "hooks.json").read_text())
     hook = hooks["hooks"]["SessionStart"][0]["hooks"][0]
     assert hook["timeout"] >= 35
-    assert hooks["description"] == "One-way Codex base release notification."
+    assert hooks["description"] == "Codex Base release notification."
