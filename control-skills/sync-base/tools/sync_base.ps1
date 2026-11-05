@@ -130,6 +130,10 @@ function Get-LlmSyncPolicy {
                 throw 'Sync policy acceptance contract is incomplete.'
             }
         }
+        if ($null -ne $policy.evidence.PSObject.Properties['professional_from'] -and
+            [string]$policy.evidence.professional_from -cnotmatch '^\d+\.\d+\.\d+$') {
+            throw 'Sync policy professional release boundary is invalid.'
+        }
         if ([string]$policy.evidence.required_protocol -notmatch '^[a-z][a-z0-9-]+$' -or
             [string]$policy.evidence.required_foundation_protocol -cne 'foundation-engine-isolated-v1' -or
             [string]$policy.evidence.required_contract.id -notmatch '^[a-z][a-z0-9-]+$' -or
@@ -193,6 +197,11 @@ function Invoke-LlmGh {
 }
 
 function Get-LlmLatestStableTag {
+    if ($null -ne $script:LlmSyncPolicy.PSObject.Properties['public_transport']) {
+        $transport = Join-Path $PSScriptRoot 'public_release.ps1'
+        $rows = @(& $transport -List -Repository ([string]$script:LlmSyncPolicy.repository))
+        return Select-LlmStableRelease -Releases $rows
+    }
     $json = Invoke-LlmGh -Arguments @(
         'release',
         'list',
@@ -286,9 +295,19 @@ function Assert-LlmReleaseEvidence {
     if ($null -eq $verdictRoot) {
         throw 'Acceptance evidence verdicts are missing.'
     }
-    foreach ($name in @(
-        $script:LlmSyncPolicy.evidence.required_verdicts
-    )) {
+    $evidencePolicy = $script:LlmSyncPolicy.evidence
+    $verdicts = @($evidencePolicy.required_verdicts)
+    $protocol = if ($style -ceq 'flat') { [string]$evidencePolicy.required_protocol }
+    $programRelease = [string]$evidencePolicy.program_release
+    $professionalFrom = $evidencePolicy.PSObject.Properties['professional_from']
+    if ($style -ceq 'flat' -and $null -ne $professionalFrom -and
+        [version]$Manifest.version -ge [version]$professionalFrom.Value) {
+        $verdicts = @($verdicts | Where-Object { $_ -cne 'INSTALL_INTEGRITY' })
+        $verdicts += @('CORE_BEHAVIOR', 'FULL_RELEASE_CODEX')
+        $protocol = 'professional-core-v1'
+        $programRelease = '1/3'
+    }
+    foreach ($name in $verdicts) {
         $property = $verdictRoot.PSObject.Properties[[string]$name]
         if ($null -eq $property -or [string]$property.Value -cne 'PASS') {
             throw "Acceptance evidence is not PASS: $name"
@@ -311,17 +330,37 @@ function Assert-LlmReleaseEvidence {
         }
         if ($null -eq $Evidence.PSObject.Properties['acceptance_protocol'] -or
             $null -eq $Evidence.PSObject.Properties['MATCHED_AB'] -or
-            [string]$Evidence.acceptance_protocol -cne [string]$script:LlmSyncPolicy.evidence.required_protocol -or
+            [string]$Evidence.acceptance_protocol -cne $protocol -or
             [string]$Evidence.MATCHED_AB -cne 'NOT_REQUIRED') {
             throw 'Acceptance evidence current protocol differs.'
         }
-        if ([string]$script:LlmSyncPolicy.evidence.required_protocol -ceq 'installation-integrity-v1') {
+        if ($protocol -ceq 'installation-integrity-v1') {
             if ([string]$Evidence.acceptance_scope -cne 'INSTALLATION_ONLY' -or
                 [string]$Evidence.CORE_BEHAVIOR -cne 'NOT_RUN' -or
                 [string]$Evidence.FULL_RELEASE_CODEX -cne 'NOT_PASS' -or
                 [string]$Evidence.INSTALL_INTEGRITY -cne 'PASS' -or
                 $null -ne $Evidence.PSObject.Properties['core_behavior_evidence']) {
                 throw 'Installation-only acceptance claim differs.'
+            }
+        }
+        if ($protocol -ceq 'professional-core-v1') {
+            $core = $Evidence.PSObject.Properties['core_behavior_evidence']
+            if ($null -eq $core -or $null -eq $core.Value -or
+                $null -eq $core.Value.PSObject.Properties['CORE_BEHAVIOR'] -or
+                [string]$core.Value.CORE_BEHAVIOR -cne 'PASS' -or
+                ($core.Value.release_binding | ConvertTo-Json -Compress -Depth 30) -cne
+                    ($Evidence.release_binding | ConvertTo-Json -Compress -Depth 30)) {
+                throw 'Professional-core acceptance claim differs.'
+            }
+            if ($null -ne $professionalFrom -and [string]$Manifest.version -ceq [string]$professionalFrom.Value) {
+                $workspace = $core.Value.PSObject.Properties['workspace_behavior']
+                if ($null -eq $workspace -or $null -eq $workspace.Value -or
+                    $null -eq $workspace.Value.PSObject.Properties['cases'] -or
+                    $null -eq $workspace.Value.cases -or
+                    (@($workspace.Value.cases.PSObject.Properties.Name | Sort-Object) -join '|') -cne
+                        'W07|W08|W09|W10|W11|W12') {
+                    throw 'Acceptance evidence workspace coverage differs.'
+                }
             }
         }
         if ($null -eq $Manifest.PSObject.Properties['core_behavior_contract']) {
@@ -333,9 +372,7 @@ function Assert-LlmReleaseEvidence {
                 throw 'Acceptance evidence core contract differs.'
             }
         }
-        if ([string]$Evidence.PROGRAM_RELEASE -cne (
-            [string]$script:LlmSyncPolicy.evidence.program_release
-        )) {
+        if ([string]$Evidence.PROGRAM_RELEASE -cne $programRelease) {
             throw 'Program release verdict differs.'
         }
         if ($null -eq $Evidence.release_binding) {
@@ -807,6 +844,23 @@ function Invoke-LlmSyncMain {
     )
     [IO.Directory]::CreateDirectory($temporary) | Out-Null
     try {
+        $assetDirectory = $temporary
+        $publicTransport = $script:LlmSyncPolicy.PSObject.Properties['public_transport']
+        if ($null -ne $publicTransport) {
+            $assetDirectory = Join-Path $temporary 'public-assets'
+            $verifier = Join-Path (Split-Path -Parent $PSScriptRoot) 'runtime/release-verifier.exe'
+            if (-not (Test-Path -LiteralPath $verifier -PathType Leaf) -or
+                (Get-LlmSha256File -Path $verifier) -cne [string]$publicTransport.Value.verifier_sha256) {
+                throw 'Packaged public release verifier is missing or differs.'
+            }
+            Invoke-WithLlmConnection -HomePath $TargetHome -ScriptBlock {
+                & (Join-Path $PSScriptRoot 'public_release.ps1') -Stage $assetDirectory -Tag $tag `
+                    -Repository ([string]$script:LlmSyncPolicy.repository) -Verifier $verifier `
+                    -RepositoryId ([string]$publicTransport.Value.repository_id) `
+                    -OwnerId ([string]$publicTransport.Value.owner_id)
+            }
+        }
+        else {
         Invoke-WithLlmConnection `
             -HomePath $TargetHome `
             -ScriptBlock {
@@ -855,8 +909,9 @@ function Invoke-LlmSyncMain {
                     ) | Out-Null
                 }
             }
+        }
         $verified = Assert-LlmReleaseFiles `
-            -Directory $temporary `
+            -Directory $assetDirectory `
             -Tag $tag
         $clientVersion = Get-LlmClientVersion
         Invoke-LlmVerifiedWorkflow `

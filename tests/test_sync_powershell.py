@@ -45,9 +45,9 @@ def _write_verified_release_fixture(
     unsafe_zip_path: bool = False,
     release_integrity: str = "PASS",
     foundation_payloads: dict[str, bytes] | None = None,
+    version: str = "0.2.6",
 ) -> tuple[Path, str]:
     destination.mkdir()
-    version = "1.2.3"
     tag = f"codex-v{version}"
     client_version = "0.146.0-alpha.3.1"
     foundation_version = "0.2.0"
@@ -273,6 +273,13 @@ def test_sync_powershell_runtime_is_target_neutral_and_policy_driven(
         "tag_prefix": "codex-v",
         "transformation": "codex-native-independent-v2",
         "install_root": ".codex",
+        "public_transport": {
+            "repository_id": "1313080412",
+            "owner_id": "318982756",
+            "verifier_sha256": _sha256_bytes(
+                (repo_root / "control-skills/sync-base/runtime/release-verifier.exe").read_bytes()
+            ),
+        },
         "client": {
             "id": "codex-cli",
             "command": ["codex", "--version"],
@@ -297,6 +304,7 @@ def test_sync_powershell_runtime_is_target_neutral_and_policy_driven(
             ],
             "program_release": "2/2_INSTALLATION",
             "required_protocol": "installation-integrity-v1",
+            "professional_from": "0.2.7",
             "required_foundation_protocol": "foundation-engine-isolated-v1",
             "required_contract": contract_reference(),
         },
@@ -341,7 +349,7 @@ def test_sync_control_skill_ships_only_the_canonical_powershell_updater(
         if path.is_file() and path.suffix in {".ps1", ".py"}
     )
 
-    assert runtimes == ["sync_base.ps1"]
+    assert runtimes == ["public_release.ps1", "sync_base.ps1"]
 
 
 @pytest.mark.parametrize("executable", POWERSHELLS)
@@ -415,6 +423,10 @@ def test_sync_powershell_check_prints_selected_release(
         / "sync-base"
         / "sync-policy.json"
     )
+    legacy_policy = json.loads(policy.read_bytes())
+    legacy_policy.pop("public_transport")
+    policy = tmp_path / "legacy-policy.json"
+    policy.write_bytes(_json_bytes(legacy_policy))
     home = tmp_path / "home"
     runtime = home / ".codex" / "base" / "runtime" / "connection.ps1"
     runtime.parent.mkdir(parents=True)
@@ -923,7 +935,7 @@ def _extract_foundation_with_powershell(repo_root, executable, release_dir, tag)
 @pytest.mark.parametrize("executable", POWERSHELLS)
 def test_sync_extracts_all_13_foundation_files_byte_identically(repo_root, executable, tmp_path):
     seed, _ = _write_verified_release_fixture(tmp_path / "seed")
-    with zipfile.ZipFile(seed / "codex-base-1.2.3.zip") as archive:
+    with zipfile.ZipFile(seed / "codex-base-0.2.6.zip") as archive:
         prefix = ".codex/base/foundation/0.2.0/"
         payloads = {name[len(prefix):]: archive.read(name) for name in archive.namelist() if name.startswith(prefix)}
     # Opaque synthetic payloads keep this regression independent of a compiler,
@@ -982,3 +994,42 @@ def test_extracted_real_foundation_helper_resolves_its_bundled_parser(repo_root,
         assert observed["pass"] is True
         assert Path(observed["parser_path"]).resolve() == (extracted / "vendor/tomlyn/Tomlyn.dll").resolve()
         assert observed["parser_sha256"] == _sha256_bytes(payloads["vendor/tomlyn/Tomlyn.dll"])
+
+
+@pytest.mark.parametrize("executable", POWERSHELLS)
+@pytest.mark.parametrize(("mode", "expected"), [
+    ("legacy", "Acceptance evidence is not PASS: CORE_BEHAVIOR"),
+    ("professional", "ACCEPTED"),
+    ("missing_workspace", "Acceptance evidence workspace coverage differs."),
+])
+def test_027_updater_requires_professional_workspace_evidence(repo_root, executable, tmp_path, mode, expected):
+    release_dir, tag = _write_verified_release_fixture(tmp_path / "release", version="0.2.7")
+    evidence_path = release_dir / "acceptance-evidence.json"
+    manifest_path = release_dir / "release-manifest.json"
+    evidence = json.loads(evidence_path.read_bytes())
+    manifest = json.loads(manifest_path.read_bytes())
+    if mode != "legacy":
+        evidence.pop("INSTALL_INTEGRITY")
+        evidence.pop("acceptance_scope")
+        evidence.update(
+            acceptance_protocol="professional-core-v1", PROGRAM_RELEASE="1/3",
+            CORE_BEHAVIOR="PASS", FULL_RELEASE_CODEX="PASS",
+            core_behavior_evidence={"release_binding": evidence["release_binding"], "CORE_BEHAVIOR": "PASS"},
+        )
+        if mode == "professional":
+            evidence["core_behavior_evidence"]["workspace_behavior"] = {
+                "cases": {f"W{i:02}": {"review_artifact": f"W{i:02}-review"} for i in range(7, 13)}
+            }
+    payload = _json_bytes(evidence)
+    evidence_path.write_bytes(payload)
+    manifest["acceptance_evidence_sha256"] = _sha256_bytes(payload)
+    manifest_path.write_bytes(_json_bytes(manifest))
+    result = _run_library_probe(
+        executable,
+        repo_root / "control-skills/sync-base/tools/sync_base.ps1",
+        repo_root / "control-skills/sync-base/sync-policy.json",
+        f"try {{ $null = Assert-LlmReleaseFiles -Directory '{release_dir}' -Tag '{tag}'; 'ACCEPTED' }} "
+        "catch { $_.Exception.Message }",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == expected

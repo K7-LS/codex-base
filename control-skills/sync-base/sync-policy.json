@@ -5,6 +5,11 @@
   "tag_prefix": "codex-v",
   "transformation": "codex-native-independent-v2",
   "install_root": ".codex",
+  "public_transport": {
+    "repository_id": "1313080412",
+    "owner_id": "318982756",
+    "verifier_sha256": "e8a2e2cf728065e60ebfca6d81282516c251376f1ebb4b676c3642b64e5f1e82"
+  },
   "client": {
     "id": "codex-cli",
     "command": [
@@ -28,6 +33,7 @@
     ],
     "program_release": "2/2_INSTALLATION",
     "required_protocol": "installation-integrity-v1",
+    "professional_from": "0.2.7",
     "required_foundation_protocol": "foundation-engine-isolated-v1",
     "required_contract": {
       "id": "k7-professional-core-v1",
