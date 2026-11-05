@@ -391,3 +391,38 @@ def test_027_requires_case_specific_observations(tmp_path, case_id, field):
     evidence["evidence_body_sha256"] = body_sha256(evidence)
     with pytest.raises(ValueError, match="workspace observation"):
         validate((evidence, binding, package, root))
+
+
+def test_027_rejects_same_file_as_both_rejected_and_accepted(tmp_path):
+    evidence, binding, package, root = _workspace_bundle(tmp_path)
+    case = evidence["workspace_behavior"]["cases"]["W09"]
+    negative = evidence["artifacts"][case["negative_artifact"]]
+    final = evidence["artifacts"][case["final_artifact"]]
+    (root / final["path"]).write_bytes((root / negative["path"]).read_bytes())
+    final.update(sha256=negative["sha256"], bytes=negative["bytes"])
+
+    candidate = case["candidate"]
+    events = evidence["artifacts"][candidate["events_artifact"]]
+    event_path = root / events["path"]
+    lines = event_path.read_bytes().splitlines()
+    pointer = candidate["final_check"]
+    position = pointer["line"] - 1
+    event = json.loads(lines[position])
+    event["payload"]["result"]["artifact_sha256"] = negative["sha256"]
+    lines[position] = json.dumps(event).encode()
+    pointer["sha256"] = sha256(lines[position])
+    payload = b"\n".join(lines) + b"\n"
+    event_path.write_bytes(payload)
+    events.update(sha256=sha256(payload), bytes=len(payload))
+
+    record = evidence["artifacts"][case["review_artifact"]]
+    review_path = root / record["path"]
+    review = json.loads(review_path.read_bytes())
+    review["events_sha256"]["candidate"] = events["sha256"]
+    payload = json.dumps(review).encode()
+    review_path.write_bytes(payload)
+    record.update(sha256=sha256(payload), bytes=len(payload))
+    evidence["evidence_body_sha256"] = body_sha256(evidence)
+
+    with pytest.raises(ValueError, match="negative and final artifacts are identical"):
+        validate((evidence, binding, package, root))

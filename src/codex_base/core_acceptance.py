@@ -311,12 +311,16 @@ def _validate_workspace_delivery(case_id: str, case: dict, run_id: str, payloads
     expected_part = "word/document.xml" if case_id == "W08" else "xl/workbook.xml"
     expected_tool = "check_delivery" if case_id == "W08" else "formuladiff"
     position = run["input"]["line"]
+    seen_digests = set()
     for outcome, verdict in (("negative", "BLOCKED"), ("final", "PASS")):
         artifact = case.get(f"{outcome}_artifact")
         _require(_text(artifact) and artifact in payloads and artifact not in used_artifacts,
                  f"workspace observation {outcome} artifact is missing or reused")
         used_artifacts.add(artifact)
         payload = payloads[artifact]
+        digest = sha256(payload)
+        _require(digest not in seen_digests, "workspace negative and final artifacts are identical")
+        seen_digests.add(digest)
         try:
             with zipfile.ZipFile(BytesIO(payload)) as office:
                 _require(expected_part in office.namelist(), f"workspace observation {outcome} has wrong format")
@@ -327,7 +331,7 @@ def _validate_workspace_delivery(case_id: str, case: dict, run_id: str, payloads
         event = _workspace_observation(run, field, payloads)
         _require(event.get("kind") == "tool_result" and _behavioral_event(event, run_id)
                  and event["payload"]["name"] == expected_tool
-                 and event["payload"]["result"] == {"artifact_sha256": sha256(payload), "verdict": verdict}
+                 and event["payload"]["result"] == {"artifact_sha256": digest, "verdict": verdict}
                  and position < run[field]["line"],
                  f"workspace observation {outcome} check differs")
         position = run[field]["line"]
