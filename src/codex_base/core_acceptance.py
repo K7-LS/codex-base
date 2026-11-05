@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Any
 import zipfile
@@ -26,6 +27,11 @@ ACCEPTANCE_PROTOCOL = "professional-core-v1"
 MATCHED_AB_NOT_REQUIRED_REASON = "Historical startup-token benchmark is separate from professional-core conformance."
 MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
 MAX_BUNDLE_BYTES = 256 * 1024 * 1024
+WORKSPACE_REQUIRED_VERSION = "0.2.7"
+WORKSPACE_SUITE_PATH = ROOT / "evals/core/workspace-upgrade-cases.json"
+WORKSPACE_SUITE_SHA256 = "b01c532dafc142789ff72f8584b753d1323eb351a19ff42efadd8f0527a0a474"
+WORKSPACE_CASE_IDS = {f"W{i:02}" for i in range(7, 13)}
+WORKSPACE_BASELINE_SHA256 = "99978da063a6a0630af0d3b6d78c9dce21a02a20b3edff38e7fc5dcd6c24f7ff"
 
 
 def json_bytes(value: object) -> bytes:
@@ -273,6 +279,132 @@ def _behavioral_event(event: dict, run_id: str) -> bool:
         raise ValueError("core behavior evidence: unsupported or missing behavioral event kind")
 
 
+def _workspace_observation(run: dict, field: str, payloads: dict[str, bytes]) -> dict:
+    pointer = run.get(field)
+    _require(isinstance(pointer, dict), f"workspace observation {field} is missing")
+    return _event(pointer, payloads, run["events_artifact"])
+
+
+def _validate_workspace_change(run: dict, side: str, run_id: str, payloads: dict[str, bytes]) -> None:
+    fields = ["changed", "continued"]
+    if side == "candidate":
+        fields[1:1] = ["question", "reply"]
+    events = {field: _workspace_observation(run, field, payloads) for field in fields}
+    positions = [run["result"]["line"], *(run[field]["line"] for field in fields)]
+    _require(positions == sorted(set(positions)), "workspace observations are out of order")
+    for field in ("changed", "reply"):
+        if field in events:
+            event = events[field]
+            _require(event.get("kind") == "user_message" and event.get("run_id") == run_id
+                     and _text(event.get("text")), f"workspace observation {field} is not user input")
+    if side == "candidate":
+        question = events["question"]
+        _require(question.get("kind") == "tool_call" and _behavioral_event(question, run_id)
+                 and question["payload"]["name"] in ("request_user_input", "request_user_input_async"),
+                 "workspace observation does not include a question card")
+    _require(_behavioral_event(events["continued"], run_id), "workspace continuation is not observed")
+
+
+def _validate_workspace_delivery(case_id: str, case: dict, run_id: str, payloads: dict[str, bytes],
+                                 used_artifacts: set[str]) -> None:
+    run = case["candidate"]
+    expected_part = "word/document.xml" if case_id == "W08" else "xl/workbook.xml"
+    expected_tool = "check_delivery" if case_id == "W08" else "formuladiff"
+    position = run["input"]["line"]
+    for outcome, verdict in (("negative", "BLOCKED"), ("final", "PASS")):
+        artifact = case.get(f"{outcome}_artifact")
+        _require(_text(artifact) and artifact in payloads and artifact not in used_artifacts,
+                 f"workspace observation {outcome} artifact is missing or reused")
+        used_artifacts.add(artifact)
+        payload = payloads[artifact]
+        try:
+            with zipfile.ZipFile(BytesIO(payload)) as office:
+                _require(expected_part in office.namelist(), f"workspace observation {outcome} has wrong format")
+        except zipfile.BadZipFile as error:
+            raise ValueError(f"core behavior evidence: workspace observation {outcome} is not an Office file") from error
+
+        field = f"{outcome}_check"
+        event = _workspace_observation(run, field, payloads)
+        _require(event.get("kind") == "tool_result" and _behavioral_event(event, run_id)
+                 and event["payload"]["name"] == expected_tool
+                 and event["payload"]["result"] == {"artifact_sha256": sha256(payload), "verdict": verdict}
+                 and position < run[field]["line"],
+                 f"workspace observation {outcome} check differs")
+        position = run[field]["line"]
+
+
+def _validate_workspace_behavior(value: Any, binding: dict, payloads: dict[str, bytes]) -> None:
+    """Check the additional 0.2.7 workspace suite inside the core artifact bundle."""
+    workspace = _object(value, "workspace behavior evidence")
+    suite_id = workspace.get("suite_artifact")
+    suite_bytes = WORKSPACE_SUITE_PATH.read_bytes()
+    _require(sha256(suite_bytes) == WORKSPACE_SUITE_SHA256, "workspace suite contract differs")
+    _require(_text(suite_id) and payloads.get(suite_id) == suite_bytes, "workspace suite artifact differs")
+    specs = {case["id"]: case for case in read_json(suite_bytes)["cases"]
+             if case["id"] in WORKSPACE_CASE_IDS}
+    cases = _object(workspace.get("cases"), "workspace cases")
+    _require(set(cases) == set(specs) == WORKSPACE_CASE_IDS, "workspace cases are incomplete")
+    used_artifacts = {suite_id}
+
+    for case_id, spec in specs.items():
+        case = _object(cases[case_id], case_id)
+        fixture_id = case.get("fixture_artifact")
+        _require(_text(fixture_id) and fixture_id in payloads and fixture_id not in used_artifacts,
+                 f"{case_id} fixture evidence is missing or reused")
+        used_artifacts.add(fixture_id)
+        fixture_sha256 = sha256(payloads[fixture_id])
+        observations = {}
+        events_sha256 = {}
+        for side, package_hash in (("baseline", WORKSPACE_BASELINE_SHA256),
+                                   ("candidate", binding["asset"]["sha256"])):
+            run = _object(case.get(side), f"{case_id} {side}")
+            events = run.get("events_artifact")
+            _require(_text(events) and events in payloads and events not in used_artifacts,
+                     f"{case_id} {side} events are missing or reused")
+            used_artifacts.add(events)
+            events_sha256[side] = sha256(payloads[events])
+
+            loaded_pointer = run.get("loaded")
+            input_pointer = run.get("input")
+            result_pointer = run.get("result")
+            loaded = _event(loaded_pointer, payloads, events)
+            submitted = _event(input_pointer, payloads, events)
+            observed = _event(result_pointer, payloads, events)
+            runtime = _object(loaded.get("runtime"), "workspace runtime")
+            run_id = loaded.get("run_id")
+            _require(loaded.get("kind") == "workspace_loaded" and loaded.get("case_id") == case_id
+                     and loaded.get("package_sha256") == package_hash and _text(run_id)
+                     and _text(loaded.get("subject_id")) and loaded.get("fixture_sha256") == fixture_sha256
+                     and all(_text(runtime.get(key)) for key in ("client_version", "host", "model", "reasoning_effort")),
+                     f"{case_id} {side} source or runtime differs")
+            _require(loaded_pointer["line"] < input_pointer["line"] < result_pointer["line"]
+                     and submitted.get("run_id") == run_id and submitted.get("kind") == "user_message"
+                     and submitted.get("text") == spec["input"] and _behavioral_event(observed, run_id),
+                     f"{case_id} {side} execution is not observed")
+            if case_id == "W12":
+                _validate_workspace_change(run, side, run_id, payloads)
+            observations[side] = loaded
+
+        baseline, candidate = observations["baseline"], observations["candidate"]
+        _require(baseline["run_id"] != candidate["run_id"] and baseline["runtime"] == candidate["runtime"],
+                 f"{case_id} baseline and candidate conditions differ")
+        if case_id in ("W08", "W09"):
+            _validate_workspace_delivery(case_id, case, candidate["run_id"], payloads, used_artifacts)
+        review_id = case.get("review_artifact")
+        _require(_text(review_id) and review_id in payloads and review_id not in used_artifacts,
+                 f"{case_id} independent review is missing or reused")
+        used_artifacts.add(review_id)
+        review = _object(read_json(payloads[review_id]), "workspace review")
+        reviewer = review.get("reviewer_id")
+        expected_checks = {criterion: "PASS" for criterion in spec["reviewer_checks"]}
+        _require(review.get("case_id") == case_id and review.get("independent") is True and _text(reviewer)
+                 and reviewer not in {baseline["subject_id"], candidate["subject_id"]}
+                 and review.get("events_sha256") == events_sha256
+                 and review.get("baseline_verdict") in ("PASS", "FAIL")
+                 and review.get("candidate_checks") == expected_checks,
+                 f"{case_id} independent review is incomplete or not PASS")
+
+
 def validate_core_behavior(
     evidence: Any, binding: dict, *, package_path: Path, artifact_root: Path,
 ) -> dict:
@@ -384,6 +516,8 @@ def validate_core_behavior(
                  and reviewed.get("evaluator_sha256") == sha256(payloads[evidence["evaluator_artifact"]]),
                  "review is incomplete or bound to other bytes")
     _require(seen_cases == set(contract["criteria"]), "not all 15 cases are covered")
+    if binding.get("version") == WORKSPACE_REQUIRED_VERSION:
+        _validate_workspace_behavior(evidence.get("workspace_behavior"), binding, payloads)
     return {"CORE_BEHAVIOR": "PASS", "cases": len(seen_cases), "runs": len(runs), "claim": CLAIM}
 
 

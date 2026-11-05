@@ -6,7 +6,7 @@
 - `~/.codex/config.toml` — слияние обязательных ключей без удаления локальных секций
 - `~/.codex/hooks.json`
 - 16 файлов в `~/.codex/agents/`; соседние локальные агенты сохраняются
-- 39 capability-skills + `$sync-base` в `~/.agents/skills/`; соседние локальные skills сохраняются
+- 40 capability-skills + `$sync-base` в `~/.agents/skills/`; соседние локальные skills сохраняются
 - `~/.codex/base/cold/`
 - `~/.codex/base/runtime/`
 - `~/.codex/base/foundation/`
@@ -77,9 +77,9 @@ pwsh -NoProfile -File $Foundation `
 
 | Метрика | Legacy hub | Candidate |
 | --- | ---: | ---: |
-| Base-controlled bytes | 72,077 | 29,461 |
-| Оценка tokens `ceil(bytes/3)` | 24,026 | 9,821 |
-| Сокращение | — | 59.13% |
+| Base-controlled bytes | 72,077 | 31,723 |
+| Оценка tokens `ceil(bytes/3)` | 24,026 | 10,575 |
+| Сокращение | — | 55.99% |
 
 Это оценка статического startup/discovery-контекста, а не биллинг провайдера.
 Этот отчёт не запускает matched A/B и не доказывает снижение total input

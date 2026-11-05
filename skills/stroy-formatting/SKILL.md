@@ -1,35 +1,42 @@
 ---
 name: stroy-formatting
-description: Use when строительный документ нужно оформить по образцу.
+description: Use when оформляешь Word/Excel К-7 или проверяешь выдачу.
 ---
 
-# stroy-formatting
+# Оформление и выдача К-7
 
-Use when a final DOCX needs a known construction/report style. Do not use for
-XLSX, DWG, working Markdown or a document whose source template must be
-preserved unchanged.
+## Образец и правка
 
-## Choose the style
+В первую очередь используй согласованный образец или существующий файл.
+До правки зафиксируй применимые графы, иерархию, форматы, объединения, ширины,
+границы, выравнивание и параметры печати. Сравни итог с образцом и с исходным
+файлом. Для точечной правки проверь разрешённые изменения и сохранение
+остального содержимого, формул и структуры. В ВОР сохраняй иерархию работ и
+оборудования из применимого образца.
 
-If the user already named a style, use it. Otherwise ask one short question
-with these choices:
+Без образца или специального требования используй Times New Roman и чёрный
+текст. В таблицах проставь видимые границы, центрируй ячейки по горизонтали
+и вертикали, объединяй их только по смыслу. Убери декоративные заливки.
+Для DOCX бери `plain-clean` или явно согласованный отчётный шаблон
+`gost-report-full`, `gost-report-light` либо `gost-report-with-border`
+(последний только для альбомного учебного документа). У нейтрального шаблона проверь применённые
+стили заголовков и таблиц. Убери унаследованные цвета темы и синие линии,
+задай Times New Roman и чёрный цвет во всех применённых стилях. Шаблоны лежат в
+`assets/templates/`. Тело делового письма оформляй как связный текст.
 
-- `gost-report-full` — formal report without a frame;
-- `gost-report-light` — simplified internal report;
-- `gost-report-with-border` — only for an explicitly landscape educational
-  document; the bundled legacy frame is not accepted for portrait output;
-- `plain-clean` — neutral readable office document.
+## Перед передачей
 
-Templates are bundled under:
+- Отдели файлы адресата от расчётов, черновиков, резервных копий, отчётов
+  проверок и логов. Проверь состав комплекта, версию, открытие и ссылки
+  с позиции адресата. Для общей папки проверь доступ или наследование прав.
+- Для DOCX, XLSX, PPTX и текстовых файлов запусти
+  `python <skill-root>/tools/check_delivery.py <file>`. Код 2 означает
+  служебную пометку или ошибку чтения. Код 3 означает неподдерживаемый формат.
+  Проверь текст и комментарии глазами. Для PDF проверь текст извлечением
+  и визуально, включая сканы. Если проверка не выполнена, её результат открыт.
+- Оформление и печать проверь на конечных файлах через
+  `document-quality-gate`. Передай проверяющему образец и границы правки.
+  Если преобразуешь DOCX в PDF, проверь оба конечных файла.
 
-```text
-~/.agents/skills/stroy-formatting/assets/templates/
-```
-
-Copy the selected template to the user's requested output directory, populate
-it through capability `document.word.write`, then run `word-checker`. If PDF is
-requested, convert only after DOCX review and run `pdf-reviewer`.
-
-Never fetch a template from another device, publish a template change from a
-consumer, or save the deliverable inside the base. Missing capabilities return
-`BLOCKED` with the exact dependency.
+Служебный отчёт оставь в ядре. Если существенная проверка не проходит,
+исправь комплект или назови пользователю конкретный блокер отдельно.

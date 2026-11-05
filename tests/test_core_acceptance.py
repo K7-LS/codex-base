@@ -241,3 +241,153 @@ def test_mid_task_case_requires_actual_steering_between_observations(bundle):
     evidence["evidence_body_sha256"] = body_sha256(evidence)
     with pytest.raises(ValueError, match="event pointer"):
         validate(bundle)
+
+
+def test_027_core_evidence_requires_workspace_runs(tmp_path):
+    binding = {"target": "codex", "version": "0.2.7", "asset": {"name": "candidate.zip"}}
+    package = minimal_package(tmp_path, binding)
+    evidence = synthetic_core(binding, package, tmp_path)
+    with pytest.raises(ValueError, match="workspace behavior evidence"):
+        validate_core_behavior(evidence, binding, package_path=package, artifact_root=tmp_path)
+
+
+def test_027_promotion_rejects_installation_only():
+    from codex_base.acceptance import evidence_body_sha256
+    from codex_base.final_evidence import INSTALL_ACCEPTANCE_PROTOCOL
+
+    binding = {"version": "0.2.7"}
+    evidence = {
+        "schema_version": 1, "target": "codex", "version": "0.2.7",
+        "release_binding": binding, "acceptance_protocol": INSTALL_ACCEPTANCE_PROTOCOL,
+        "FOUNDATION_SYNTHETIC": "NOT_RUN", "MATCHED_AB": "NOT_REQUIRED",
+        "matched_ab_not_required_reason": MATCHED_AB_NOT_REQUIRED_REASON,
+    }
+    evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
+    with pytest.raises(ValueError, match="requires workspace behavior"):
+        _verify_evidence(evidence, binding, require_full_release=True)
+
+
+
+def _workspace_bundle(tmp_path):
+    from codex_base.core_acceptance import WORKSPACE_BASELINE_SHA256, WORKSPACE_CASE_IDS, WORKSPACE_SUITE_PATH
+
+    binding = {"target": "codex", "version": "0.2.7", "asset": {"name": "candidate.zip"}}
+    package = minimal_package(tmp_path, binding)
+    evidence = synthetic_core(binding, package, tmp_path)
+
+    def artifact(key, payload):
+        relative = f"core-artifacts/{key}.json"
+        (tmp_path / relative).write_bytes(payload)
+        evidence["artifacts"][key] = {"path": relative, "sha256": sha256(payload), "bytes": len(payload)}
+        return key
+
+    suite = WORKSPACE_SUITE_PATH.read_bytes()
+    workspace = {"suite_artifact": artifact("workspace-suite", suite), "cases": {}}
+    for spec in json.loads(suite)["cases"]:
+        case_id = spec["id"]
+        if case_id not in WORKSPACE_CASE_IDS:
+            continue
+        fixture = f"Synthetic fixture {case_id}".encode()
+        case = {"fixture_artifact": artifact(f"{case_id}-fixture", fixture)}
+        hashes = {}
+        checked = {}
+        if case_id in ("W08", "W09"):
+            from io import BytesIO
+            from zipfile import ZipFile
+
+            for outcome in ("negative", "final"):
+                stream = BytesIO()
+                with ZipFile(stream, "w") as archive:
+                    part = "word/document.xml" if case_id == "W08" else "xl/workbook.xml"
+                    archive.writestr(part, f"<test>{case_id} {outcome}</test>")
+                payload = stream.getvalue()
+                case[f"{outcome}_artifact"] = artifact(f"{case_id}-{outcome}", payload)
+                checked[outcome] = sha256(payload)
+        for side, package_hash in (("baseline", WORKSPACE_BASELINE_SHA256),
+                                   ("candidate", binding["asset"]["sha256"])):
+            run_id = f"{case_id}-{side}"
+            key = f"{run_id}-events"
+            events = [
+                {"kind": "workspace_loaded", "run_id": run_id, "case_id": case_id,
+                 "subject_id": "test-model-subject", "package_sha256": package_hash,
+                 "fixture_sha256": sha256(fixture),
+                 "runtime": {"client_version": "1.0.0", "host": "test-host",
+                             "model": "test-model", "reasoning_effort": "test-effort"}},
+                {"kind": "user_message", "run_id": run_id, "text": spec["input"]},
+                {"kind": "assistant_message", "run_id": run_id, "text": "Synthetic unit-test observation"},
+            ]
+            fields = ["loaded", "input", "result"]
+            if side == "candidate" and checked:
+                for outcome, verdict in (("negative", "BLOCKED"), ("final", "PASS")):
+                    events.append({
+                        "kind": "tool_result", "run_id": run_id,
+                        "payload": {"name": "check_delivery" if case_id == "W08" else "formuladiff",
+                                    "result": {"artifact_sha256": checked[outcome], "verdict": verdict}},
+                    })
+                    fields.append(f"{outcome}_check")
+            if case_id == "W12":
+                events.append({"kind": "user_message", "run_id": run_id, "text": "New document arrives"})
+                fields.append("changed")
+                if side == "candidate":
+                    events.extend([
+                        {"kind": "tool_call", "run_id": run_id,
+                         "payload": {"name": "request_user_input_async", "arguments": {"question": "Which revision?"}}},
+                        {"kind": "user_message", "run_id": run_id, "text": "Use revision 2"},
+                    ])
+                    fields.extend(["question", "reply"])
+                events.append({"kind": "assistant_message", "run_id": run_id, "text": "Work after new input"})
+                fields.append("continued")
+            lines = [json.dumps(event).encode() for event in events]
+            payload = b"\n".join(lines) + b"\n"
+            hashes[side] = sha256(payload)
+            case[side] = {"events_artifact": artifact(key, payload)}
+            for number, field in enumerate(fields, 1):
+                case[side][field] = {"artifact": key, "line": number, "sha256": sha256(lines[number - 1])}
+        review = {"case_id": case_id, "independent": True, "reviewer_id": "test-independent-reviewer",
+                  "baseline_verdict": "FAIL", "events_sha256": hashes,
+                  "candidate_checks": {criterion: "PASS" for criterion in spec["reviewer_checks"]}}
+        case["review_artifact"] = artifact(f"{case_id}-review", json.dumps(review).encode())
+        workspace["cases"][case_id] = case
+    evidence["workspace_behavior"] = workspace
+    evidence["evidence_body_sha256"] = body_sha256(evidence)
+    return evidence, binding, package, tmp_path
+
+
+def test_027_accepts_all_workspace_cases_with_independent_reviews(tmp_path):
+    result = validate(_workspace_bundle(tmp_path))
+    assert result["CORE_BEHAVIOR"] == "PASS"
+
+
+@pytest.mark.parametrize("tamper", ["missing_case", "failed_criterion", "self_review", "reused_events"])
+def test_027_workspace_gate_fails_closed(tmp_path, tamper):
+    evidence, binding, package, root = _workspace_bundle(tmp_path)
+    cases = evidence["workspace_behavior"]["cases"]
+    if tamper == "missing_case":
+        del cases["W07"]
+    elif tamper == "reused_events":
+        cases["W07"]["candidate"] = cases["W07"]["baseline"]
+    else:
+        record = evidence["artifacts"][cases["W07"]["review_artifact"]]
+        path = root / record["path"]
+        review = json.loads(path.read_bytes())
+        if tamper == "failed_criterion":
+            review["candidate_checks"][next(iter(review["candidate_checks"]))] = "FAIL"
+        else:
+            review["reviewer_id"] = "test-model-subject"
+        payload = json.dumps(review).encode()
+        path.write_bytes(payload)
+        record.update(sha256=sha256(payload), bytes=len(payload))
+    evidence["evidence_body_sha256"] = body_sha256(evidence)
+    with pytest.raises(ValueError, match=r"workspace cases|W07"):
+        validate((evidence, binding, package, root))
+
+
+@pytest.mark.parametrize("case_id, field", [
+    ("W08", "negative_check"), ("W09", "final_check"), ("W12", "changed"), ("W12", "reply"),
+])
+def test_027_requires_case_specific_observations(tmp_path, case_id, field):
+    evidence, binding, package, root = _workspace_bundle(tmp_path)
+    del evidence["workspace_behavior"]["cases"][case_id]["candidate"][field]
+    evidence["evidence_body_sha256"] = body_sha256(evidence)
+    with pytest.raises(ValueError, match="workspace observation"):
+        validate((evidence, binding, package, root))

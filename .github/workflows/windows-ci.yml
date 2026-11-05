@@ -28,7 +28,7 @@ jobs:
         shell: pwsh
         run: >-
           python -m pip install --disable-pip-version-check
-          pytest PyYAML
+          pytest PyYAML "openpyxl>=3.1"
       - name: Show runtime versions
         shell: pwsh
         run: |
@@ -61,7 +61,7 @@ jobs:
         shell: powershell
         run: >-
           python -m pip install --disable-pip-version-check
-          pytest PyYAML
+          pytest PyYAML "openpyxl>=3.1"
       - name: Show runtime versions
         shell: powershell
         run: |

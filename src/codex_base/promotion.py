@@ -15,7 +15,7 @@ from .final_evidence import (LEGACY_SYNC_BOOTSTRAP_CONTRACT, INSTALL_ACCEPTANCE_
 from .foundation_evidence import validate_foundation_engine
 from .session_tools import validate_session_tools_asset_record, validate_session_tools_release_binding
 from .core_acceptance import (
-    ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON,
+    ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON, WORKSPACE_REQUIRED_VERSION,
     copy_core_artifacts, package_source_inventory, read_json, validate_core_behavior,
     validate_current_wire_keys,
 )
@@ -92,6 +92,8 @@ def _verify_evidence(
             or evidence.get("MATCHED_AB") != "NOT_REQUIRED"
             or evidence.get("matched_ab_not_required_reason") != MATCHED_AB_NOT_REQUIRED_REASON):
             raise ValueError("current acceptance protocol is missing or differs")
+        if protocol == INSTALL_ACCEPTANCE_PROTOCOL and binding.get("version") == WORKSPACE_REQUIRED_VERSION:
+            raise ValueError("0.2.7 requires workspace behavior; installation-only promotion is not allowed")
         for gate in (REQUIRED_FULL_RELEASE_GATES if protocol == ACCEPTANCE_PROTOCOL else REQUIRED_INSTALL_GATES):
             if evidence.get(gate) != "PASS":
                 raise ValueError(f"{gate} is not PASS")

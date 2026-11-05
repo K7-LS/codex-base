@@ -30,13 +30,19 @@ description: Use when нужно прочитать, изменить или п�
 
 ```bash
 python skills/excel-helper/tools/excel_diff.py celldiff  v1.xlsx v2.xlsx out.xlsx   # diff с подсветкой
-python skills/excel-helper/tools/excel_diff.py formuladiff v1.xlsx v2.xlsx          # расхождения формул
+python skills/excel-helper/tools/excel_diff.py formuladiff v1.xlsx v2.xlsx [--require-unchanged]
 python skills/excel-helper/tools/excel_diff.py errors    file.xlsx                  # #REF!/#DIV/0!/#NAME?
 python skills/excel-helper/tools/excel_diff.py dupes     file.xlsx ID               # дубликаты по ключу
 ```
 
 Или `import`: `cell_diff`, `formula_diff`, `find_formula_errors`, `find_duplicates`.
-Запускать Python'ом с установленными `openpyxl`/`pandas` (системный, не uv-tool graphify).
+Для точечной правки без изменения формул используй `--require-unchanged`:
+код 2 означает, что формула изменена, добавлена или удалена. Сверка сравнивает
+формулы ячеек по листу и адресу. Определённые имена, формулы правил и связи
+проверяй отдельно. При согласованном переносе ячеек или изменении
+формул сравни обычный diff с разрешёнными изменениями. Проверяй отдельно
+значения, стили и результаты пересчёта. Для формул нужен `openpyxl>=3.1`,
+для поиска дублей — `pandas`.
 
 ## БОЕВОЕ ПРАВИЛО чтения чужого файла: сначала формулы, потом выводы
 
@@ -65,8 +71,9 @@ wb_v = load_workbook(path, data_only=True)    # кэшированные зна�
 - **Таблицы:** openpyxl `Table` с дефолтным `TableStyleInfo` даёт **синий**
   `TableStyleMedium2/9` — НЕ использовать. Либо вообще без table-style, либо
   нейтральный (`TableStyleLight1` / без цвета). Лучше — простые границы вручную.
-- **Шапка:** жирный + максимум светло-серая заливка (`F2F2F2`/`D9D9D9`), **чёрный**
-  текст, тонкие серо-чёрные границы. Никакого синего/акцентного.
+- **Чистовая выдача К-7:** оформление по `stroy-formatting`. Без образца —
+  чёрный текст Times New Roman, видимые границы, выравнивание по центру
+  горизонтали и вертикали и без декоративных заливок.
 - **При правке существующего файла** — наследовать стиль книги, НЕ навязывать свой.
 - **Цвет ТОЛЬКО** если: есть в источнике, попросил пользователь, ИЛИ это
   функциональная подсветка анализа (diff yellow/green/red, подсветка ошибок —

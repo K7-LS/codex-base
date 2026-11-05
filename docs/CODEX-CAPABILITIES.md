@@ -7,7 +7,7 @@
 источников, повседневная строительная работа, язык и приёмка результата.
 Обычная ВОР относится к основной базе; отдельный модуль выбирают по сложности
 процесса. Ядро также задаёт маршруты специалистов и разрешения. WARM discovery
-показывает названия, короткие описания и пути 16 агентов, 39 capability-skills
+показывает названия, короткие описания и пути 16 агентов, 40 capability-skills
 и одного control-skill `$sync-base`.
 
 Полные методологии, скрипты, шаблоны и references на старте неизвестны и не
@@ -40,7 +40,7 @@
 | `snabzhenets` | Разбирает УПД и входящие КП, сравнивает поставщиков и формирует закупочные заявки. | RW | `core.files.read`, `spreadsheet.write` |
 | `word-checker` | Read-only проверка DOCX: структура, стили, таблицы, изображения и незаполненные шаблоны. | RO | `document.word.read` |
 
-## 39 capability-skills
+## 40 capability-skills
 
 | Skill | Когда загружается | Зависимости |
 | --- | --- | --- |
@@ -51,11 +51,12 @@
 | `$doc-extract` | Use when нужно извлечь текст или таблицы из PDF и сканов. | `pdf.read`, `pdf.render` |
 | `$doc-finder` | Use when нужен сертификат, паспорт или декларация на изделие. | `web.search`, `web.fetch` |
 | `$document-quality-gate` | Use when checking prepared text or DOCX, XLSX, PPTX or PDF before delivery. | `core.files.read` |
-| `$domain-grilling` | Use when инженерной задаче не хватает критичных вводных. | `core.files.read` |
+| `$domain-grilling` | Use when не хватает инженерных вводных. | `core.files.read` |
 | `$excel-helper` | Use when нужно прочитать, изменить или проверить XLSX. | `spreadsheet.read`, `spreadsheet.write` |
 | `$facts-layer` | Use when проекту нужен проверяемый единый слой фактов. | `core.files.read`, `core.files.write` |
 | `$graphify` | Use when нужно понять структуру и связи большой базы. | `core.files.read`, `core.shell.execute` |
 | `$handoff-to-new-chat` | Use when работу нужно передать в новую чистую задачу Codex. | `core.files.read`, `core.files.write` |
+| `$heads-up` | Use when итог скрывает риск. |  |
 | `$id-tom-priemka` | Use when PDF-том ИД нужно постранично принять перед сдачей. | `pdf.read`, `pdf.render` |
 | `$image-text-replace` | Use when в скане или изображении нужно заменить текст. | `image.read`, `image.write` |
 | `$karpathy-guidelines` | Use when существенная реализация рискует стать избыточной. | `core.files.read` |
@@ -73,7 +74,7 @@
 | `$ru-writing-style` | Use when пишешь или правишь русский текст для человека — письмо, КП, пояснительную записку, ответ экспертизе, отчёт, ТЗ, статью. |  |
 | `$skill-development` | Use when создаётся или изменяется повторно используемый навык. | `core.files.read`, `core.files.write` |
 | `$spec-writer` | Use when нужна спецификация оборудования в XLSX или DOCX. | `spreadsheet.write`, `document.word.write` |
-| `$stroy-formatting` | Use when строительный документ нужно оформить по образцу. | `document.word.write` |
+| `$stroy-formatting` | Use when оформляешь Word/Excel К-7 или проверяешь выдачу. | `core.files.read` |
 | `$structured-artifacts` | Use when контекст нужно вынести в файлы состояния и решений. | `core.files.read`, `core.files.write` |
 | `$supervisor` | Use when явно нужен надзор за автономным Codex. | `core.files.read` |
 | `$supplier-due-diligence` | Use when нужно проверить поставщика или подлинность документа. | `web.search`, `web.fetch` |

@@ -12,7 +12,7 @@
 
 CLI:
   python excel_diff.py celldiff  v1.xlsx v2.xlsx out.xlsx
-  python excel_diff.py formuladiff v1.xlsx v2.xlsx
+  python excel_diff.py formuladiff v1.xlsx v2.xlsx [--require-unchanged]
   python excel_diff.py errors    file.xlsx
   python excel_diff.py dupes     file.xlsx ID
 
@@ -79,24 +79,36 @@ def cell_diff(v1_path, v2_path, out_path):
     return stats
 
 
-def formula_diff(v1_path, v2_path):
-    """Список расхождений формул: [(sheet, A1, formula_v1, formula_v2), ...].
-    Только ячейки, где хотя бы в одном файле есть формула. Ловит и 'формула
-    захардкожена в значение' (f1 есть, f2 нет)."""
+def _formula_inventory(path):
     from openpyxl import load_workbook
-    wb1 = load_workbook(v1_path, data_only=False)
-    wb2 = load_workbook(v2_path, data_only=False)
-    out = []
-    for name in set(wb1.sheetnames) & set(wb2.sheetnames):
-        ws1, ws2 = wb1[name], wb2[name]
-        for row in ws2.iter_rows():
-            for cell in row:
-                f2 = cell.value if isinstance(cell.value, str) and cell.value.startswith("=") else None
-                f1_val = ws1.cell(cell.row, cell.column).value
-                f1 = f1_val if isinstance(f1_val, str) and f1_val.startswith("=") else None
-                if f1 != f2 and (f1 or f2):
-                    out.append((name, cell.coordinate, f1, f2))
-    return out
+
+    workbook = load_workbook(path, read_only=True, data_only=False, keep_links=False)
+    try:
+        formulas = {}
+        for sheet in workbook.worksheets:
+            # Read actual rows even when the producer saved a stale used range.
+            sheet.reset_dimensions()
+            for row in sheet.iter_rows():
+                for cell in row:
+                    if cell.data_type == "f":
+                        value = cell.value
+                        formulas[sheet.title, cell.coordinate] = (
+                            value if isinstance(value, str)
+                            else repr((dict(value), getattr(value, "text", None)))
+                        )
+        return formulas
+    finally:
+        workbook.close()
+
+
+def formula_diff(v1_path, v2_path):
+    """Расхождения формул по листам и адресам, включая удалённые и добавленные."""
+    before, after = _formula_inventory(v1_path), _formula_inventory(v2_path)
+    return [
+        (sheet, coordinate, before.get((sheet, coordinate)), after.get((sheet, coordinate)))
+        for sheet, coordinate in sorted(before.keys() | after.keys())
+        if before.get((sheet, coordinate)) != after.get((sheet, coordinate))
+    ]
 
 
 def find_formula_errors(path):
@@ -130,11 +142,13 @@ def _main(argv):
     cmd = argv[1]
     if cmd == "celldiff" and len(argv) == 5:
         print(cell_diff(argv[2], argv[3], argv[4]))
-    elif cmd == "formuladiff" and len(argv) == 4:
+    elif cmd == "formuladiff" and (len(argv) == 4 or argv[4:] == ["--require-unchanged"]):
         rows = formula_diff(argv[2], argv[3])
         for sheet, coord, f1, f2 in rows:
             print(f"{sheet}!{coord}:\n  v1: {f1}\n  v2: {f2}")
         print(f"\n{len(rows)} formula diffs")
+        if len(argv) == 5 and rows:
+            return 2
     elif cmd == "errors" and len(argv) == 3:
         errs = find_formula_errors(argv[2])
         for s, c, e in errs:

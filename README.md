@@ -47,7 +47,7 @@ workstation installation.
 ## Build and offline acceptance
 
 ```powershell
-py -3.12 -m pip install pytest PyYAML
+py -3.12 -m pip install pytest PyYAML "openpyxl>=3.1"
 $env:PYTHONPATH = "src"
 py -3.12 -m pytest -q
 py -3.12 .\tools\run_acceptance.py `
