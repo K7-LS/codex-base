@@ -8,6 +8,7 @@ from zipfile import ZipFile
 
 from openpyxl import Workbook
 from openpyxl.worksheet.formula import ArrayFormula
+from openpyxl.worksheet.pagebreak import Break
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -98,6 +99,42 @@ def test_formula_guard_accepts_unchanged_formulas_and_ignores_literal_text(tmp_p
     result = run(EXCEL, "formuladiff", before, after, "--require-unchanged")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "0 formula diffs" in result.stdout
+
+
+def test_print_guard_rejects_resave_that_enables_fit_to_page(tmp_path: Path):
+    before, after = tmp_path / "before.xlsx", tmp_path / "after.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Образец"
+    sheet.print_area = "A1:D4"
+    sheet.page_setup.paperSize = sheet.PAPERSIZE_A4
+    workbook.save(before)
+
+    sheet.title = "ВОР"
+    sheet["D3"] = 20.5
+    workbook.save(after)
+    result = run(EXCEL, "printdiff", before, after, "Образец", "ВОР")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    sheet.sheet_properties.pageSetUpPr.fitToPage = True
+    sheet.page_setup.fitToWidth = 1
+    sheet.page_setup.fitToHeight = 1
+    sheet.row_breaks.append(Break(id=6))
+    sheet.oddFooter.center.text = "Внутренний текст колонтитула"
+    workbook.save(after)
+    final_bytes = after.read_bytes()
+    result = run(EXCEL, "printdiff", before, after, "Образец", "ВОР")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "fitToPage" in result.stdout
+    assert "fitToWidth" in result.stdout
+    assert "row_breaks" in result.stdout
+    assert "header_footer.oddFooter.sha256" in result.stdout
+    assert "Внутренний текст" not in result.stdout
+    assert after.read_bytes() == final_bytes
+
+    unknown_sheet = run(EXCEL, "printdiff", before, after, "Образец", "Нет листа")
+    assert unknown_sheet.returncode == 1
+    assert "Нет листа" in unknown_sheet.stderr
 
 
 def test_delivery_checks_word_tracked_deletions(tmp_path: Path):

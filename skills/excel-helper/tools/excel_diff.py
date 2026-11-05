@@ -13,12 +13,13 @@
 CLI:
   python excel_diff.py celldiff  v1.xlsx v2.xlsx out.xlsx
   python excel_diff.py formuladiff v1.xlsx v2.xlsx [--require-unchanged]
+  python excel_diff.py printdiff reference.xlsx final.xlsx reference_sheet final_sheet
   python excel_diff.py errors    file.xlsx
   python excel_diff.py dupes     file.xlsx ID
 
 Ловушки (см. SKILL.md): data_only=True вернёт None для формул без кэша Excel;
 openpyxl save() стирает drawing-слой (картинки) и ломает vertical-merge при delete_rows.
-Эти функции — read/diff (errors, formuladiff, dupes безопасны); cell_diff пишет НОВЫЙ
+Эти функции — read/diff (errors, formuladiff, printdiff, dupes безопасны); cell_diff пишет НОВЫЙ
 файл из v2, для файлов с картинками проверь media-слой перед использованием результата.
 """
 import sys
@@ -27,6 +28,7 @@ import io
 # UTF-8 stdout (кириллица в выводе на Windows-консоли)
 try:
     sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 except Exception:
     pass
 
@@ -111,6 +113,52 @@ def formula_diff(v1_path, v2_path):
     ]
 
 
+def _print_settings(path, sheet_name):
+    from hashlib import sha256
+
+    from openpyxl import load_workbook
+    from openpyxl.utils.cell import quote_sheetname
+
+    workbook = load_workbook(path, keep_links=False)
+    try:
+        sheet = workbook[sheet_name]
+        qualifier = f"{quote_sheetname(sheet.title)}!"
+        settings = {
+            "print_area": sheet.print_area.replace(qualifier, ""),
+            "print_title_rows": sheet.print_title_rows,
+            "print_title_cols": sheet.print_title_cols,
+            "row_breaks": [dict(item) for item in sheet.row_breaks.brk],
+            "column_breaks": [dict(item) for item in sheet.col_breaks.brk],
+        }
+        for section, value in (
+            ("page_setup", sheet.page_setup),
+            ("page_margins", sheet.page_margins),
+            ("print_options", sheet.print_options),
+            ("page_setup_properties", sheet.sheet_properties.pageSetUpPr),
+            ("header_footer", sheet.HeaderFooter),
+        ):
+            if value is not None:
+                settings.update((f"{section}.{key}", entry) for key, entry in value)
+        for name in ("oddHeader", "evenHeader", "firstHeader", "oddFooter", "evenFooter", "firstFooter"):
+            content = str(getattr(sheet.HeaderFooter, name))
+            if content:
+                settings[f"header_footer.{name}.sha256"] = sha256(content.encode("utf-8")).hexdigest()
+        return settings
+    finally:
+        workbook.close()
+
+
+def print_diff(reference_path, final_path, reference_sheet, final_sheet):
+    """Сравнить настройки печати двух листов без пересохранения книг."""
+    before = _print_settings(reference_path, reference_sheet)
+    after = _print_settings(final_path, final_sheet)
+    return [
+        (key, before.get(key), after.get(key))
+        for key in sorted(before.keys() | after.keys())
+        if before.get(key) != after.get(key)
+    ]
+
+
 def find_formula_errors(path):
     """Найти ячейки с ошибками #REF!/#DIV/0!/#NAME? по cached-значениям.
     ВНИМАНИЕ: требует, чтобы файл был открыт/сохранён в Excel (иначе кэша нет
@@ -149,6 +197,16 @@ def _main(argv):
         print(f"\n{len(rows)} formula diffs")
         if len(argv) == 5 and rows:
             return 2
+    elif cmd == "printdiff" and len(argv) == 6:
+        try:
+            rows = print_diff(*argv[2:])
+        except KeyError as error:
+            print(error, file=sys.stderr)
+            return 1
+        for key, before, after in rows:
+            print(f"{key}: {before!r} → {after!r}")
+        print(f"{len(rows)} print setting diffs")
+        return 2 if rows else 0
     elif cmd == "errors" and len(argv) == 3:
         errs = find_formula_errors(argv[2])
         for s, c, e in errs:
