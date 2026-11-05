@@ -158,7 +158,8 @@ try {
         Set-BundleFile $provenance $provenancePath
         $signer = "https://github.com/$repo/.github/workflows/attest-release-assets.yml@refs/tags/$Tag"
         $json = Invoke-CheckedNative -Command 'gh' -Arguments @(
-            'attestation', 'verify', $destination, '--repo', $repo, '--bundle', $provenancePath,
+            'attestation', 'verify', $destination, '--hostname', 'github.com',
+            '--repo', $repo, '--bundle', $provenancePath,
             '--cert-identity', $signer, '--source-digest', $commit, '--deny-self-hosted-runners', '--format', 'json'
         )
         $reports = @(($json -join "`n") | ConvertFrom-Json)
