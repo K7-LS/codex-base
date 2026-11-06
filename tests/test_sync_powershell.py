@@ -997,13 +997,14 @@ def test_extracted_real_foundation_helper_resolves_its_bundled_parser(repo_root,
 
 
 @pytest.mark.parametrize("executable", POWERSHELLS)
-@pytest.mark.parametrize(("mode", "expected"), [
-    ("legacy", "Acceptance evidence is not PASS: CORE_BEHAVIOR"),
-    ("professional", "ACCEPTED"),
-    ("missing_workspace", "Acceptance evidence workspace coverage differs."),
+@pytest.mark.parametrize(("version", "mode", "expected"), [
+    ("0.2.7", "legacy", "ACCEPTED"),
+    ("0.2.8", "legacy", "Acceptance evidence is not PASS: CORE_BEHAVIOR"),
+    ("0.2.8", "professional", "ACCEPTED"),
+    ("0.2.8", "missing_workspace", "Acceptance evidence workspace coverage differs."),
 ])
-def test_027_updater_requires_professional_workspace_evidence(repo_root, executable, tmp_path, mode, expected):
-    release_dir, tag = _write_verified_release_fixture(tmp_path / "release", version="0.2.7")
+def test_updater_professional_workspace_evidence_boundary(repo_root, executable, tmp_path, version, mode, expected):
+    release_dir, tag = _write_verified_release_fixture(tmp_path / "release", version=version)
     evidence_path = release_dir / "acceptance-evidence.json"
     manifest_path = release_dir / "release-manifest.json"
     evidence = json.loads(evidence_path.read_bytes())
