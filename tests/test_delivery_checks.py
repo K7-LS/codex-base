@@ -49,6 +49,25 @@ def test_delivery_preserves_recipient_facts(tmp_path: Path):
     assert json.loads(result.stdout) == {"status": "PASS", "findings": []}
 
 
+def test_delivery_directory_checks_only_agreed_files(tmp_path: Path):
+    folder = tmp_path / "Выдача"
+    folder.mkdir()
+    (folder / "Письмо.docx").touch()
+    (folder / "Реестр.xlsx").touch()
+    args = (folder, "--expected", "Письмо.docx", "--expected", "Реестр.xlsx")
+    assert run(DELIVERY, *args).returncode == 0
+    extra = folder / "Основание" / "Акт испытаний.txt"
+    extra.parent.mkdir()
+    extra.touch()
+    (folder / "Реестр.xlsx").unlink()
+    result = run(DELIVERY, *args)
+    assert result.returncode == 2
+    assert json.loads(result.stdout)["findings"] == [
+        {"location": "Основание/Акт испытаний.txt", "code": "UNEXPECTED_FILE"},
+        {"location": "Реестр.xlsx", "code": "MISSING_FILE"},
+    ]
+
+
 @pytest.mark.parametrize("ns", [
     "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
     "http://purl.oclc.org/ooxml/wordprocessingml/main",

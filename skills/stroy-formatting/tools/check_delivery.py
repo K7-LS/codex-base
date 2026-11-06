@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Check final files for internal markers and optionally Word paragraph borders."""
+"""Check final files for internal markers or compare a delivery folder to its file list."""
 
 import argparse
 import json
 import re
+import stat
+from os import walk
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from zipfile import BadZipFile, ZipFile
@@ -125,22 +127,66 @@ def scan(path: Path, suffix: str, plain: bool = False) -> list[dict[str, str]]:
         return findings
 
 
+def check_directory(path: Path, expected: list[str]) -> list[dict[str, str]]:
+    def fail(error: OSError) -> None:
+        raise error
+
+    def is_link(item: Path) -> bool:
+        info = item.lstat()
+        junction = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", -1)
+        return stat.S_ISLNK(info.st_mode) or getattr(info, "st_reparse_tag", 0) == junction
+
+    if is_link(path) or not path.is_dir():
+        raise NotADirectoryError(path)
+    actual = set()
+    links = set()
+    for parent, directories, files in walk(path, onerror=fail):
+        # An uninspected linked directory cannot prove the agreed contents.
+        folder = Path(parent)
+        linked = [name for name in directories if is_link(folder / name)]
+        for name in linked:
+            directories.remove(name)
+        links.update((folder / name).relative_to(path).as_posix() for name in linked)
+        for name in files:
+            item = folder / name
+            relative = item.relative_to(path).as_posix()
+            if is_link(item):
+                links.add(relative)
+            else:
+                actual.add(relative)
+    agreed = {Path(name).as_posix() for name in expected}
+    return [
+        *({"location": name, "code": "UNEXPECTED_FILE"} for name in sorted((actual - agreed) | links)),
+        *({"location": name, "code": "MISSING_FILE"} for name in sorted(agreed - actual)),
+    ]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", type=Path)
     parser.add_argument("--plain", action="store_true", help="also check neutral DOCX paragraph borders")
+    parser.add_argument("--expected", action="append", metavar="RELATIVE_FILE",
+                        help="check delivery folder contents against this list; repeat for each file")
     args = parser.parse_args()
     path = args.path
     suffix = path.suffix.lower()
-    if args.plain and suffix != ".docx":
-        parser.error("--plain requires a DOCX file")
-    if suffix not in TEXT and suffix not in PARTS:
-        print(json.dumps({"status": "NOT_CHECKED", "findings": [{"code": "UNSUPPORTED_FORMAT"}]}))
-        return 3
-    try:
-        findings = scan(path, suffix, plain=args.plain)
-    except (OSError, BadZipFile, ValueError, ET.ParseError):
-        findings = [{"code": "UNREADABLE_DOCUMENT"}]
+    if args.expected:
+        if args.plain:
+            parser.error("--expected and --plain are separate checks")
+        try:
+            findings = check_directory(path, args.expected)
+        except OSError:
+            findings = [{"code": "UNREADABLE_DIRECTORY"}]
+    else:
+        if args.plain and suffix != ".docx":
+            parser.error("--plain requires a DOCX file")
+        if suffix not in TEXT and suffix not in PARTS:
+            print(json.dumps({"status": "NOT_CHECKED", "findings": [{"code": "UNSUPPORTED_FORMAT"}]}))
+            return 3
+        try:
+            findings = scan(path, suffix, plain=args.plain)
+        except (OSError, BadZipFile, ValueError, ET.ParseError):
+            findings = [{"code": "UNREADABLE_DOCUMENT"}]
     print(json.dumps({"status": "BLOCKED" if findings else "PASS", "findings": findings}))
     return 2 if findings else 0
 
