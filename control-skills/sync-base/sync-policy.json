@@ -33,7 +33,7 @@
     ],
     "program_release": "2/2_INSTALLATION",
     "required_protocol": "installation-integrity-v1",
-    "professional_from": "0.2.7",
+    "professional_from": "0.2.8",
     "required_foundation_protocol": "foundation-engine-isolated-v1",
     "required_contract": {
       "id": "k7-professional-core-v1",

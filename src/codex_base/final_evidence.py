@@ -9,7 +9,7 @@ from .acceptance import evidence_body_sha256
 from .foundation_evidence import validate_foundation_engine
 from .canary import EXPECTED_PHASES
 from .core_acceptance import (
-    ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON, WORKSPACE_REQUIRED_VERSION,
+    ACCEPTANCE_PROTOCOL, MATCHED_AB_NOT_REQUIRED_REASON,
     client_matches_package, package_client, package_discovery, package_foundation_sha256, validate_core_behavior,
     validate_current_wire_keys,
 )
@@ -45,6 +45,11 @@ LEGACY_SYNC_BOOTSTRAP_CONTRACT = {
 }
 INSTALL_ACCEPTANCE_PROTOCOL = "installation-integrity-v1"
 INSTALL_PROGRAM_RELEASE = "2/2_INSTALLATION"
+PROFESSIONAL_RELEASE_FROM = (0, 2, 8)
+
+
+def requires_professional_release(version: str) -> bool:
+    return tuple(map(int, version.split("."))) >= PROFESSIONAL_RELEASE_FROM
 
 
 def _json_bytes(value: object) -> bytes:
@@ -289,8 +294,8 @@ def compose_final_evidence(
     """Compose current evidence; historical A/B remains a separate benchmark."""
 
     binding = _validate_candidate(candidate)
-    if install_only and binding.get("version") == WORKSPACE_REQUIRED_VERSION:
-        raise ValueError("0.2.7 requires workspace behavior; installation-only evidence is not allowed")
+    if install_only and requires_professional_release(binding["version"]):
+        raise ValueError("0.2.8 and later require professional-core evidence")
     if "core_behavior" in candidate:
         raise ValueError("obsolete core_behavior wire key collides with the PowerShell verdict key")
     if not install_only and core_behavior is None:

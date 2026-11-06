@@ -251,19 +251,19 @@ def test_027_core_evidence_requires_workspace_runs(tmp_path):
         validate_core_behavior(evidence, binding, package_path=package, artifact_root=tmp_path)
 
 
-def test_027_promotion_rejects_installation_only():
+def test_028_promotion_rejects_installation_only():
     from codex_base.acceptance import evidence_body_sha256
     from codex_base.final_evidence import INSTALL_ACCEPTANCE_PROTOCOL
 
-    binding = {"version": "0.2.7"}
+    binding = {"version": "0.2.8"}
     evidence = {
-        "schema_version": 1, "target": "codex", "version": "0.2.7",
+        "schema_version": 1, "target": "codex", "version": "0.2.8",
         "release_binding": binding, "acceptance_protocol": INSTALL_ACCEPTANCE_PROTOCOL,
         "FOUNDATION_SYNTHETIC": "NOT_RUN", "MATCHED_AB": "NOT_REQUIRED",
         "matched_ab_not_required_reason": MATCHED_AB_NOT_REQUIRED_REASON,
     }
     evidence["evidence_body_sha256"] = evidence_body_sha256(evidence)
-    with pytest.raises(ValueError, match="requires workspace behavior"):
+    with pytest.raises(ValueError, match="require professional-core evidence"):
         _verify_evidence(evidence, binding, require_full_release=True)
 
 

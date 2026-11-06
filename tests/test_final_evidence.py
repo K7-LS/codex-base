@@ -18,13 +18,13 @@ from codex_base.core_acceptance import package_discovery, package_foundation_sha
 from codex_base.matched_ab import LEGACY_SURFACE_SHA256, summarize_results
 
 
-def _binding(tmp_path) -> dict[str, object]:
+def _binding(tmp_path, version="0.1.1") -> dict[str, object]:
     binding = {
         "target": "codex",
-        "version": "0.1.1",
-        "tag": "codex-v0.1.1",
+        "version": version,
+        "tag": f"codex-v{version}",
         "asset": {
-            "name": "codex-base-0.1.1.zip",
+            "name": f"codex-base-{version}.zip",
             "sha256": "a" * 64,
             "bytes": 123,
         },
@@ -47,7 +47,7 @@ def _candidate(binding: dict[str, object], package_path, *, historical=False) ->
     evidence = {
         "schema_version": 1,
         "target": "codex",
-        "version": "0.1.1",
+        "version": binding["version"],
         "release_binding": binding,
         "FOUNDATION_SYNTHETIC": "PASS",
         "FOUNDATION_ENGINE_ACCEPTANCE": "PASS",
@@ -175,8 +175,9 @@ def test_current_composition_needs_no_historical_model_call(tmp_path, legacy):
     assert final["evidence_body_sha256"] == evidence_body_sha256(final)
 
 
-def test_installation_only_composition_keeps_model_verdict_unpassed(tmp_path):
-    binding = _binding(tmp_path)
+@pytest.mark.parametrize("version", ["0.1.1", "0.2.7"])
+def test_installation_only_composition_keeps_model_verdict_unpassed(tmp_path, version):
+    binding = _binding(tmp_path, version)
     package_path = tmp_path / binding["asset"]["name"]
     candidate = _candidate(binding, package_path)
     candidate["CORE_BEHAVIOR"] = "NOT_RUN"

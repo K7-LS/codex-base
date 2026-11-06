@@ -100,7 +100,9 @@ immutable GitHub release/asset attestations. The final evidence records
 `INSTALL_INTEGRITY: PASS`, `CORE_BEHAVIOR: NOT_RUN`, and
 `FULL_RELEASE_CODEX: NOT_PASS`. An earlier candidate's model run did not pass;
 this protocol makes no claim of professional model behavior. Existing
-`professional-core-v1` validation remains available for future releases.
+`professional-core-v1` validation remains available. The owner selected
+`installation-integrity-v1` for 0.2.7. Stable releases from 0.2.8 onward
+require `professional-core-v1`.
 
 The historical owner-authorized guarded GPT-5.6 Terra matched A/B started its first
 call and completed none. Hardened evidence identified `item.completed` with

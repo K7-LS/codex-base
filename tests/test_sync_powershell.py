@@ -304,7 +304,7 @@ def test_sync_powershell_runtime_is_target_neutral_and_policy_driven(
             ],
             "program_release": "2/2_INSTALLATION",
             "required_protocol": "installation-integrity-v1",
-            "professional_from": "0.2.7",
+            "professional_from": "0.2.8",
             "required_foundation_protocol": "foundation-engine-isolated-v1",
             "required_contract": contract_reference(),
         },
