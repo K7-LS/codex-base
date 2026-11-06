@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read final files for explicit internal markers. Never prints marked text."""
+"""Check final files for internal markers and optionally Word paragraph borders."""
 
 import argparse
 import json
@@ -29,6 +29,11 @@ MAIN_PART = {
 TEXT = {".txt", ".md", ".csv", ".tsv"}
 EXCEL_HEADER_SECTION = re.compile(r"(?<!&)&[LCR]")
 EXCEL_HEADER_FORMAT = re.compile(r'(?<!&)&(?:K[\da-fA-F]{6}|"[^"]*"|\d{1,3}|[A-Za-z])')
+WORD_NAMESPACES = {
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}",
+    "{http://purl.oclc.org/ooxml/wordprocessingml/main}",
+}
+WORD_STORIES = re.compile(r"word/(?:document|header\d+|footer\d+|endnotes|footnotes)\.xml")
 
 
 def local_name(element: ET.Element) -> str:
@@ -53,7 +58,50 @@ def text_groups(root: ET.Element, suffix: str):
                 yield EXCEL_HEADER_FORMAT.sub("", section)
 
 
-def scan(path: Path, suffix: str) -> list[dict[str, str]]:
+def word_has_colored_border(root: ET.Element, styles: ET.Element) -> bool:
+    namespace, delimiter, _ = root.tag.rpartition("}")
+    w = namespace + delimiter
+    if w not in WORD_NAMESPACES or styles.tag not in ("styles", w + "styles"):
+        raise ValueError("unrecognized Word namespace")
+    paragraphs = {
+        style.get(w + "styleId"): style for style in styles.findall(w + "style")
+        if style.get(w + "type") == "paragraph"
+    }
+    default = next(
+        (name for name, style in paragraphs.items() if style.get(w + "default") in ("1", "true")),
+        None,
+    )
+    fallback = styles.find(f"{w}docDefaults/{w}pPrDefault/{w}pPr/{w}pBdr")
+    for paragraph in root.iter(w + "p"):
+        borders = [paragraph.find(f"{w}pPr/{w}pBdr")]
+        applied = paragraph.find(f"{w}pPr/{w}pStyle")
+        name = default if applied is None else applied.get(w + "val")
+        seen = set()
+        while name in paragraphs and name not in seen:
+            seen.add(name)
+            style = paragraphs[name]
+            borders.append(style.find(f"{w}pPr/{w}pBdr"))
+            parent = style.find(w + "basedOn")
+            name = None if parent is None else parent.get(w + "val")
+        borders.append(fallback)
+        edges = {
+            edge.tag: edge
+            for border in reversed(borders) if border is not None
+            for edge in border
+        }
+        if any(
+            edge.get(w + "val") not in ("nil", "none")
+            and (
+                edge.get(w + "themeColor") is not None
+                or edge.get(w + "color", "auto").lower() not in ("auto", "000000")
+            )
+            for edge in edges.values()
+        ):
+            return True
+    return False
+
+
+def scan(path: Path, suffix: str, plain: bool = False) -> list[dict[str, str]]:
     if suffix in TEXT:
         return [
             {"location": f"line {number}", "code": "INTERNAL_NOTE"}
@@ -64,23 +112,33 @@ def scan(path: Path, suffix: str) -> list[dict[str, str]]:
         names = sorted(name for name in package.namelist() if re.fullmatch(PARTS[suffix], name))
         if not any(re.fullmatch(MAIN_PART[suffix], name) for name in names):
             raise ValueError("main document part missing")
-        return [
-            {"location": name, "code": "INTERNAL_NOTE"}
-            for name in names
-            if any(MARKER.search(group) for group in text_groups(ET.fromstring(package.read(name)), suffix))
-        ]
+        styles = ET.Element("styles")
+        if plain and "word/styles.xml" in package.namelist():
+            styles = ET.fromstring(package.read("word/styles.xml"))
+        findings = []
+        for name in names:
+            root = ET.fromstring(package.read(name))
+            if any(MARKER.search(group) for group in text_groups(root, suffix)):
+                findings.append({"location": name, "code": "INTERNAL_NOTE"})
+            if plain and WORD_STORIES.fullmatch(name) and word_has_colored_border(root, styles):
+                findings.append({"location": name, "code": "NON_NEUTRAL_PARAGRAPH_BORDER"})
+        return findings
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", type=Path)
-    path = parser.parse_args().path
+    parser.add_argument("--plain", action="store_true", help="also check neutral DOCX paragraph borders")
+    args = parser.parse_args()
+    path = args.path
     suffix = path.suffix.lower()
+    if args.plain and suffix != ".docx":
+        parser.error("--plain requires a DOCX file")
     if suffix not in TEXT and suffix not in PARTS:
         print(json.dumps({"status": "NOT_CHECKED", "findings": [{"code": "UNSUPPORTED_FORMAT"}]}))
         return 3
     try:
-        findings = scan(path, suffix)
+        findings = scan(path, suffix, plain=args.plain)
     except (OSError, BadZipFile, ValueError, ET.ParseError):
         findings = [{"code": "UNREADABLE_DOCUMENT"}]
     print(json.dumps({"status": "BLOCKED" if findings else "PASS", "findings": findings}))

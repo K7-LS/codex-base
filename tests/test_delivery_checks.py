@@ -4,8 +4,10 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
+import pytest
 from openpyxl import Workbook
 from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.pagebreak import Break
@@ -45,6 +47,60 @@ def test_delivery_preserves_recipient_facts(tmp_path: Path):
     result = run(DELIVERY, path)
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == {"status": "PASS", "findings": []}
+
+
+@pytest.mark.parametrize("ns", [
+    "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    "http://purl.oclc.org/ooxml/wordprocessingml/main",
+])
+def test_plain_delivery_blocks_inherited_theme_border_only_when_applied(tmp_path: Path, ns: str):
+    path = tmp_path / "letter.docx"
+    styles = f'''<w:styles xmlns:w="{ns}">
+      <w:style w:type="paragraph" w:styleId="Base">
+        <w:pPr><w:pBdr><w:bottom w:val="single" w:color="4F81BD" w:themeColor="accent1"/></w:pBdr></w:pPr>
+      </w:style>
+      <w:style w:type="paragraph" w:styleId="Title"><w:basedOn w:val="Base"/></w:style>
+    </w:styles>'''
+    for paragraph, expected in [
+        ('<w:pStyle w:val="Title"/>', 2),
+        ('<w:pStyle w:val="Title"/><w:pBdr><w:top w:val="single" w:color="000000"/></w:pBdr>', 2),
+        ('<w:pStyle w:val="Title"/><w:pBdr><w:bottom w:val="nil"/></w:pBdr>', 0),
+        ('<w:pBdr><w:bottom w:val="single" w:color="000000"/></w:pBdr>', 0),
+    ]:
+        with ZipFile(path, "w") as package:
+            package.writestr("word/styles.xml", styles)
+            package.writestr(
+                "word/document.xml",
+                f'<w:document xmlns:w="{ns}"><w:body><w:p><w:pPr>{paragraph}</w:pPr>'
+                '<w:r><w:t>Реестр</w:t></w:r></w:p></w:body></w:document>',
+            )
+        assert run(DELIVERY, path).returncode == 0
+        result = run(DELIVERY, "--plain", path)
+        assert result.returncode == expected, result.stderr
+        if expected:
+            assert json.loads(result.stdout)["findings"] == [
+                {"location": "word/document.xml", "code": "NON_NEUTRAL_PARAGRAPH_BORDER"}
+            ]
+
+
+def test_plain_template_title_has_black_times_new_roman_and_no_border(tmp_path: Path):
+    template = ROOT / "skills/stroy-formatting/assets/templates/plain-clean.docx"
+    path = tmp_path / "letter.docx"
+    ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    w = f"{{{ns}}}"
+    with ZipFile(template) as package:
+        styles = package.read("word/styles.xml")
+    with ZipFile(path, "w") as package:
+        package.writestr("word/styles.xml", styles)
+        package.writestr(
+            "word/document.xml",
+            f'<w:document xmlns:w="{ns}"><w:body><w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr>'
+            '<w:r><w:t>Реестр</w:t></w:r></w:p></w:body></w:document>',
+        )
+    assert run(DELIVERY, "--plain", path).returncode == 0
+    title = ET.fromstring(styles).find(f"{w}style[@{w}styleId='Title']/{w}rPr")
+    assert title.find(f"{w}rFonts").get(f"{w}hAnsi") == "Times New Roman"
+    assert title.find(f"{w}color").attrib == {f"{w}val": "000000"}
 
 
 def test_delivery_checks_inline_and_shared_strings(tmp_path: Path):
