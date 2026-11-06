@@ -28,6 +28,7 @@ MATCHED_AB_NOT_REQUIRED_REASON = "Historical startup-token benchmark is separate
 MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
 MAX_BUNDLE_BYTES = 256 * 1024 * 1024
 WORKSPACE_REQUIRED_VERSION = "0.2.7"
+PROFESSIONAL_RELEASE_FROM = "0.2.8"
 WORKSPACE_SUITE_PATH = ROOT / "evals/core/workspace-upgrade-cases.json"
 WORKSPACE_SUITE_SHA256 = "b01c532dafc142789ff72f8584b753d1323eb351a19ff42efadd8f0527a0a474"
 WORKSPACE_CASE_IDS = {f"W{i:02}" for i in range(7, 13)}
@@ -520,7 +521,7 @@ def validate_core_behavior(
                  and reviewed.get("evaluator_sha256") == sha256(payloads[evidence["evaluator_artifact"]]),
                  "review is incomplete or bound to other bytes")
     _require(seen_cases == set(contract["criteria"]), "not all 15 cases are covered")
-    if binding.get("version") == WORKSPACE_REQUIRED_VERSION:
+    if binding.get("version") in (WORKSPACE_REQUIRED_VERSION, PROFESSIONAL_RELEASE_FROM):
         _validate_workspace_behavior(evidence.get("workspace_behavior"), binding, payloads)
     return {"CORE_BEHAVIOR": "PASS", "cases": len(seen_cases), "runs": len(runs), "claim": CLAIM}
 

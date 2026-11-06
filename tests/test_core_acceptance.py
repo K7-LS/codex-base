@@ -243,8 +243,9 @@ def test_mid_task_case_requires_actual_steering_between_observations(bundle):
         validate(bundle)
 
 
-def test_027_core_evidence_requires_workspace_runs(tmp_path):
-    binding = {"target": "codex", "version": "0.2.7", "asset": {"name": "candidate.zip"}}
+@pytest.mark.parametrize("version", ["0.2.7", "0.2.8"])
+def test_core_evidence_requires_workspace_runs_at_acceptance_boundary(tmp_path, version):
+    binding = {"target": "codex", "version": version, "asset": {"name": "candidate.zip"}}
     package = minimal_package(tmp_path, binding)
     evidence = synthetic_core(binding, package, tmp_path)
     with pytest.raises(ValueError, match="workspace behavior evidence"):
