@@ -49,6 +49,36 @@ def test_delivery_preserves_recipient_facts(tmp_path: Path):
     assert json.loads(result.stdout) == {"status": "PASS", "findings": []}
 
 
+def test_plain_xlsx_rejects_workflow_note_and_optional_decimal_separator(tmp_path: Path):
+    path = tmp_path / "Сверка.xlsx"
+    book = Workbook()
+    sheet = book.active
+    sheet["A1"] = "Кабель объединён по указанию пользователя: 12 + 8 = 20 м."
+    sheet["B1"] = 12
+    sheet["C1"] = "=SUM(B1,8)"
+    for cell in (sheet["B1"], sheet["C1"]):
+        cell.number_format = "0.###"
+    book.save(path)
+
+    assert run(DELIVERY, path).returncode == 0
+    result = run(DELIVERY, "--plain", path)
+    assert result.returncode == 2
+    assert json.loads(result.stdout)["findings"] == [
+        {"location": "xl/worksheets/sheet1.xml", "code": "INTERNAL_NOTE"},
+        {"location": "xl/worksheets/sheet1.xml!B1", "code": "OPTIONAL_DECIMAL_SEPARATOR"},
+        {"location": "xl/worksheets/sheet1.xml!C1", "code": "OPTIONAL_DECIMAL_SEPARATOR"},
+    ]
+    assert "Кабель" not in result.stdout
+
+    sheet["A1"] = "Итого по двум партиям — 20 м."
+    sheet["B1"].number_format = "0"
+    sheet["C1"].number_format = "General"
+    sheet["B2"] = 12.5
+    sheet["B2"].number_format = "0.0"
+    book.save(path)
+    assert run(DELIVERY, "--plain", path).returncode == 0
+
+
 def test_delivery_directory_checks_only_agreed_files(tmp_path: Path):
     folder = tmp_path / "Выдача"
     folder.mkdir()

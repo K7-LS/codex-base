@@ -17,6 +17,8 @@ MARKER = re.compile(
     r"(?:TODO|FIXME)\s*:)",
     re.IGNORECASE,
 )
+WORKFLOW_NOTE = re.compile(r"\bпо\s+указанию\s+пользователя\b", re.IGNORECASE)
+OPTIONAL_DECIMAL = re.compile(r"(?:#,##)?0\.#+")
 PARTS = {
     ".docx": r"word/(?:document|header\d+|footer\d+|comments\d*|endnotes|footnotes)\.xml",
     ".xlsx": r"xl/(?:worksheets/sheet\d+|sharedStrings|comments/(?:comment|comments)\d+|"
@@ -103,6 +105,19 @@ def word_has_colored_border(root: ET.Element, styles: ET.Element) -> bool:
     return False
 
 
+def xlsx_optional_decimal_styles(styles: ET.Element) -> set[int]:
+    formats = {
+        node.get("numFmtId")
+        for node in styles.findall("./{*}numFmts/{*}numFmt")
+        if OPTIONAL_DECIMAL.fullmatch(node.get("formatCode", ""))
+    }
+    return {
+        index
+        for index, style in enumerate(styles.findall("./{*}cellXfs/{*}xf"))
+        if style.get("numFmtId") in formats
+    }
+
+
 def scan(path: Path, suffix: str, plain: bool = False) -> list[dict[str, str]]:
     if suffix in TEXT:
         return [
@@ -115,15 +130,33 @@ def scan(path: Path, suffix: str, plain: bool = False) -> list[dict[str, str]]:
         if not any(re.fullmatch(MAIN_PART[suffix], name) for name in names):
             raise ValueError("main document part missing")
         styles = ET.Element("styles")
-        if plain and "word/styles.xml" in package.namelist():
+        decimal_styles = set()
+        plain_xlsx = plain and suffix == ".xlsx"
+        if plain and suffix == ".docx" and "word/styles.xml" in package.namelist():
             styles = ET.fromstring(package.read("word/styles.xml"))
+        if plain_xlsx and "xl/styles.xml" in package.namelist():
+            decimal_styles = xlsx_optional_decimal_styles(ET.fromstring(package.read("xl/styles.xml")))
         findings = []
         for name in names:
             root = ET.fromstring(package.read(name))
-            if any(MARKER.search(group) for group in text_groups(root, suffix)):
+            if any(
+                MARKER.search(group) or (plain_xlsx and WORKFLOW_NOTE.search(group))
+                for group in text_groups(root, suffix)
+            ):
                 findings.append({"location": name, "code": "INTERNAL_NOTE"})
             if plain and WORD_STORIES.fullmatch(name) and word_has_colored_border(root, styles):
                 findings.append({"location": name, "code": "NON_NEUTRAL_PARAGRAPH_BORDER"})
+            if decimal_styles and re.fullmatch(MAIN_PART[".xlsx"], name):
+                for cell in root.findall("./{*}sheetData/{*}row/{*}c"):
+                    if (
+                        cell.get("t", "n") == "n"
+                        and int(cell.get("s", "0")) in decimal_styles
+                        and (cell.find("{*}v") is not None or cell.find("{*}f") is not None)
+                    ):
+                        findings.append({
+                            "location": f"{name}!{cell.get('r', '?')}",
+                            "code": "OPTIONAL_DECIMAL_SEPARATOR",
+                        })
         return findings
 
 
@@ -164,7 +197,8 @@ def check_directory(path: Path, expected: list[str]) -> list[dict[str, str]]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", type=Path)
-    parser.add_argument("--plain", action="store_true", help="also check neutral DOCX paragraph borders")
+    parser.add_argument("--plain", action="store_true",
+                        help="also check neutral DOCX borders or XLSX notes and numeric formats")
     parser.add_argument("--expected", action="append", metavar="RELATIVE_FILE",
                         help="check delivery folder contents against this list; repeat for each file")
     args = parser.parse_args()
@@ -178,8 +212,8 @@ def main() -> int:
         except OSError:
             findings = [{"code": "UNREADABLE_DIRECTORY"}]
     else:
-        if args.plain and suffix != ".docx":
-            parser.error("--plain requires a DOCX file")
+        if args.plain and suffix not in {".docx", ".xlsx"}:
+            parser.error("--plain requires a DOCX or XLSX file")
         if suffix not in TEXT and suffix not in PARTS:
             print(json.dumps({"status": "NOT_CHECKED", "findings": [{"code": "UNSUPPORTED_FORMAT"}]}))
             return 3
